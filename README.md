@@ -10,8 +10,10 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 
 - Mode: open circuit, CCR, or CCR with OC bailout
 - Depth, bottom time (runtime at the start of the ascent), GF low and GF high
+- Last-stop GF (optional, off by default): hold the last stop until the surfacing GF is at or below a third value, e.g. 30/85 with the last stop held to 70
 - Up to four more levels (for example 80 m for 20 min, then 60 m for 20 min); an added level's time is the time at depth, and in open circuit each level can have its own gas
 - In CCR, optional open-circuit deco gases (you stay on the loop until the first one's switch depth)
+- In CCR, optional bailout to open-circuit oxygen at the last stop (default 15 min): either for the last minutes of the stop, or added after the loop clears
 - Bottom gas, or diluent and setpoints (descent, bottom, deco), and the bailout gas
 - Up to five deco or bailout gases, each with a default or custom switch depth
 - Descent rate, ascent rate to the first stop, rate between stops, and rate to the surface
