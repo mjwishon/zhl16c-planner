@@ -171,8 +171,13 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
   background: var(--surface); color: var(--ink); border: 1px solid var(--ring); border-radius: 6px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); padding: 8px 10px; font: 12.5px/1.5 var(--font-mono);
 }
-.tip.wide { display: grid; grid-template-columns: repeat(2, auto); column-gap: 14px; min-width: 0; }
-.tip.wide .t-head { grid-column: 1 / -1; }
+.tip .rows { display: grid; gap: 1px 16px; }
+.tip.wide { min-width: 0; padding: 8px 12px; }
+.tip.wide .rows { grid-template-columns: repeat(2, auto); grid-template-rows: repeat(8, auto); grid-auto-flow: column; }
+.tip.wide .r { gap: 6px; }
+.tip.wide .r strong { min-width: 2.8em; text-align: right; order: 2; }
+.tip.wide .r span { order: 1; min-width: 2.6em; color: var(--muted); }
+.tip.wide .key { width: 14px; }
 .tip .t-head { color: var(--muted); margin-bottom: 3px; }
 .tip .r { display: flex; align-items: center; gap: 8px; }
 .tip .r strong { font-weight: 500; min-width: 4.4em; }
@@ -358,10 +363,10 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
       <section>
         <div class="sec-head">
           <h2>Compartment loading</h2>
-          <p>Inert gas pressure in each of the 16 compartments over the dive and after surfacing, breathing air at the surface. The thicker line is the compartment that leads on surfacing.</p>
+          <p>Inert gas pressure in each of the 16 compartments over the dive and after surfacing, breathing air at the surface.</p>
         </div>
         <div class="loadbox">
-          <div class="ramp"><span>1 fast</span><i aria-hidden="true"></i><span>16 slow</span><span id="lead-key"></span>
+          <div class="ramp"><span>1 fast</span><i aria-hidden="true"></i><span>16 slow</span>
             <label class="tail" for="in-tail">After surfacing <input id="in-tail" type="number" min="0" max="1440" step="10"> min</label></div>
           <h3>Nitrogen, bar</h3>
           <div class="chart" id="chart-n2"><div class="tip" hidden></div></div>
@@ -924,16 +929,18 @@ function renderGas(P) {
 }
 
 // ---- tooltip --------------------------------------------------------------------------
-function showTip(chart, head, rows, px, py) {
+function showTip(chart, head, rows, px, py, wide) {
   const tip = chart.querySelector(".tip"); tip.replaceChildren();
+  tip.classList.toggle("wide", !!wide);
   tip.appendChild(h("div", "t-head", head));
+  const box = h("div", "rows");
   rows.forEach(([v, l, key]) => {
     const r = h("div", "r");
     if (key) r.appendChild(key);
     r.append(h("strong", null, v), h("span", null, l));
-    tip.appendChild(r);
+    box.appendChild(r);
   });
-  tip.classList.remove("wide");
+  tip.appendChild(box);
   tip.hidden = false;
   const cw = chart.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
   let x = px + 14; if (x + tw > cw - 4) x = px - tw - 14; if (x < 4) x = 4;
@@ -1102,11 +1109,9 @@ function drawLoading(P, key, chartId, gasName) {
     el("line", { x1: X(tS), x2: X(tS), y1: f.y0, y2: f.y1, stroke: "var(--ink-2)", "stroke-width": 1, "stroke-dasharray": "4 4" }, g);
     txt(g, X(tS) + 6, f.y0 + 12, "surface", { class: "lbl" });
   }
-  const lead = P.tissues.reduce((a, b) => (b.gf > a.gf ? b : a)).n - 1;
-  const order = [...Array(16).keys()].filter(i => i !== lead).concat([lead]);   // leading line on top
-  order.forEach(i => {
+  [...Array(16).keys()].forEach(i => {
     const p = el("polyline", { points: L.t.map((tt, k) => X(tt / 60) + "," + Y(series[k][i])).join(" "), fill: "none",
-      "stroke-width": i === lead ? 3 : 1.5, "stroke-linejoin": "round", "stroke-linecap": "round" }, g);
+      "stroke-width": 1.5, "stroke-linejoin": "round", "stroke-linecap": "round" }, g);
     p.style.stroke = rampColor(i);
   });
   const cross = el("line", { y1: f.y0, y2: f.y1, stroke: "var(--ink-2)", "stroke-width": 1, visibility: "hidden" }, g);
@@ -1120,12 +1125,12 @@ function drawLoading(P, key, chartId, gasName) {
     cross.setAttribute("x1", X(L.t[k] / 60)); cross.setAttribute("x2", X(L.t[k] / 60)); cross.setAttribute("visibility", "visible");
     const rows = [...Array(16).keys()].map(i => {
       const key = el("svg", { class: "key", viewBox: "0 0 22 10", "aria-hidden": "true" });
-      const ln = el("line", { x1: 1, y1: 5, x2: 21, y2: 5, "stroke-width": i === lead ? 3.5 : 2.5, "stroke-linecap": "round" }, key);
+      const ln = el("line", { x1: 1, y1: 5, x2: 21, y2: 5, "stroke-width": 2.5, "stroke-linecap": "round" }, key);
       ln.style.stroke = rampColor(i);
-      return [series[k][i].toFixed(2), "#" + (i + 1) + (i === lead ? " lead" : ""), key];
+      return [series[k][i].toFixed(2), "#" + (i + 1), key];
     });
-    showTip(chart, `${gasName} · runtime ${mmss(L.t[k])}`, rows, X(L.t[k] / 60), ev.clientY - chart.getBoundingClientRect().top);
-    chart.querySelector(".tip").classList.add("wide");
+    const after = L.t[k] > L.tSurface + 1e-6 ? ` · ${Math.round((L.t[k] - L.tSurface) / 60)} min after surfacing` : "";
+    showTip(chart, `${gasName}, bar · runtime ${mmss(L.t[k])}${after}`, rows, X(L.t[k] / 60), ev.clientY - chart.getBoundingClientRect().top, true);
   });
   hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(chart); });
   f.svg.setAttribute("role", "img");
@@ -1151,8 +1156,6 @@ function drawCharts() {
   drawTissues(current.P, current.gfhi);
   drawLoading(current.P, "n2", "chart-n2", "Nitrogen");
   drawLoading(current.P, "he", "chart-he", "Helium");
-  const lead = current.P.tissues.reduce((a, b) => (b.gf > a.gf ? b : a));
-  $("lead-key").textContent = `· thick line: #${lead.n}, leading on surfacing`;
 }
 (function legend() {
   const box = $("legend-prof");
