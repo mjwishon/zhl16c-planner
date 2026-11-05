@@ -1,0 +1,928 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ZH-L16C Planner</title>
+<meta name="description" content="Bühlmann ZH-L16C decompression planner with gradient factors for open circuit, CCR and CCR with open-circuit bailout. Experimental, not for dive planning.">
+<meta name="theme-color" content="#f6f7f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1012" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ZH-L16C">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<style>
+/* Layout: warning banner; inputs in a side panel (stacked on phones); results: summary, dive plan, profile, tissues, notes. */
+:root {
+  --bg: #f6f7f8;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #4c4f54;
+  --muted: #84878c;
+  --grid: #e3e5e8;
+  --axis: #c3c6cb;
+  --ring: rgba(11, 11, 11, 0.12);
+  --accent: #2a78d6;
+  --warn-line: #d99400;
+  --c-depth: #2a78d6;
+  --c-ceil: #eb6834;
+  --c-bar: #86b6ef;
+  --c-lead: #1c5cab;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1012; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #8f9196;
+    --grid: #2c2c2a; --axis: #3d3e40; --ring: rgba(255, 255, 255, 0.12); --accent: #3987e5;
+    --warn-line: #fab219; --c-depth: #3987e5; --c-ceil: #d95926; --c-bar: #256abf; --c-lead: #9ec5f4;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1012; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #8f9196;
+  --grid: #2c2c2a; --axis: #3d3e40; --ring: rgba(255, 255, 255, 0.12); --accent: #3987e5;
+  --warn-line: #fab219; --c-depth: #3987e5; --c-ceil: #d95926; --c-bar: #256abf; --c-lead: #9ec5f4;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font-sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 28px 56px; display: grid; gap: 28px; }
+h1, h2 { text-wrap: balance; margin: 0; }
+h1 { font-size: 30px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 18px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.num, td, .val { font-variant-numeric: tabular-nums; }
+
+.warning { display: grid; gap: 6px; padding: 16px 20px; border-left: 4px solid var(--warn-line);
+  background: color-mix(in srgb, var(--warn-line) 9%, transparent); border-radius: 0 8px 8px 0; }
+.w-head { display: flex; align-items: center; gap: 10px; }
+.warning svg { width: 24px; height: 24px; flex: none; }
+.warning strong { font-size: 22px; line-height: 1.2; font-weight: 600; }
+.warning p { font-size: 16px; color: var(--ink-2); max-width: none; }
+
+.head { display: grid; gap: 8px; }
+.lede { color: var(--ink-2); font-size: 15.5px; }
+
+.app { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 32px; align-items: start; }
+.panel {
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px);
+  max-height: calc(100vh - 32px); overflow: auto;
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 10px;
+  padding: 16px; display: grid; gap: 18px;
+}
+.results { display: grid; gap: 40px; min-width: 0; }
+
+fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; min-width: 0; }
+legend { font: 600 12px/1 var(--font-sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0; margin-bottom: 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-start; }
+.field { display: grid; gap: 4px; align-content: start; font-size: 13px; color: var(--ink-2); }
+.field .in { display: flex; align-items: center; gap: 6px; font: 13px var(--font-mono); color: var(--muted); }
+input[type="number"], select {
+  font: 15px var(--font-mono); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--ring); border-radius: 6px; padding: 6px 8px; font-variant-numeric: tabular-nums;
+}
+input[type="number"] { width: 4.8em; }
+input::placeholder { color: var(--muted); }
+input:focus-visible, select:focus-visible, button:focus-visible, .seg label:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+sub { line-height: 0; }
+.hint { font-size: 12.5px; color: var(--muted); }
+
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; }
+.seg label { text-align: center; font-size: 13px; padding: 8px 4px; cursor: pointer; color: var(--ink-2); }
+.seg label + label { border-left: 1px solid var(--ring); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { background: var(--accent); color: #fff; font-weight: 500; }
+
+.gas-list { display: grid; gap: 8px; }
+.gas-row { display: grid; grid-template-columns: auto auto auto auto; justify-content: start; gap: 4px 8px; align-items: end;
+  padding-top: 8px; border-top: 1px solid var(--grid); }
+.gas-row:first-child { border-top: 0; padding-top: 0; }
+.gas-row .gname { grid-column: 1 / -1; font-size: 13px; font-weight: 500; color: var(--ink); }
+.gas-row input[type="number"] { width: 4.2em; }
+button {
+  font: 500 13px var(--font-sans); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--ring); border-radius: 6px; padding: 6px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--axis); }
+button.x { padding: 6px 9px; line-height: 1; margin-bottom: 1px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.msg { font-size: 13.5px; color: var(--ink); border-left: 3px solid var(--warn-line); padding: 6px 10px;
+  background: color-mix(in srgb, var(--warn-line) 9%, transparent); max-width: none; }
+
+.summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+.sum { padding: 2px 20px; display: grid; gap: 2px; min-width: 0; }
+.sum:first-child { padding-left: 0; }
+.sum + .sum { border-left: 1px solid var(--grid); }
+.sum .k { font-size: 12.5px; color: var(--muted); }
+.sum .v { font: 500 26px/1.15 var(--font-mono); }
+.sum .v small { font-size: 14px; color: var(--muted); font-weight: 400; margin-left: 3px; }
+.sum .s { font-size: 12.5px; color: var(--ink-2); }
+
+section { display: grid; gap: 12px; min-width: 0; }
+.sec-head { display: grid; gap: 4px; }
+.sec-head p { color: var(--ink-2); font-size: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.key { width: 22px; height: 10px; flex: none; }
+
+.table-box { overflow-x: auto; background: var(--surface); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; min-width: 600px; font: 13.5px/1.3 var(--font-mono); }
+th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
+thead th { font: 500 12.5px var(--font-sans); color: var(--ink-2); }
+tr.stop td:first-child { font-weight: 500; }
+tr.minor td { color: var(--muted); }
+td .m { color: var(--muted); }
+
+.chart { position: relative; background: var(--surface); border-radius: 8px; padding: 12px 8px 6px; min-width: 0; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { font-family: var(--font-mono); font-size: 11.5px; fill: var(--muted); }
+.chart .lbl { fill: var(--ink-2); }
+.tip {
+  position: absolute; pointer-events: none; z-index: 2; min-width: 170px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--ring); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); padding: 8px 10px; font: 12.5px/1.5 var(--font-mono);
+}
+.tip .t-head { color: var(--muted); margin-bottom: 3px; }
+.tip .r { display: flex; align-items: center; gap: 8px; }
+.tip .r strong { font-weight: 500; min-width: 4.4em; }
+.tip .r span { color: var(--ink-2); }
+
+.notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.notes > div { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.notes h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.notes li, .notes p { font-size: 14px; color: var(--ink-2); }
+.notes ul, .notes ol { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.refs li { font-size: 13px; }
+.refs a { color: var(--accent); }
+
+@media (max-width: 980px) {
+  .app { grid-template-columns: 1fr; }
+  .panel { position: static; max-height: none; }
+}
+@media (max-width: 640px) {
+  .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sum { padding: 10px 12px; }
+  .sum:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .sum:nth-child(n+3) { border-top: 1px solid var(--grid); }
+  .notes { grid-template-columns: 1fr; }
+  h1 { font-size: 25px; }
+  .warning strong { font-size: 19px; } .warning p { font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <aside class="warning" role="note" aria-label="Warning">
+    <div class="w-head"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 1.5 21h21L12 2.5z" fill="var(--warn-line)"/><path d="M12 9v5.5" stroke="#0b0b0b" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.6" r="1.3" fill="#0b0b0b"/></svg><strong>Not for dive planning</strong></div>
+    <p>Experimental model output. This planner has not been tested or validated for real dives. Do not plan or dive any profile from this page.</p>
+  </aside>
+
+  <header class="head">
+    <h1>ZH-L16C Planner</h1>
+    <p class="lede">Bühlmann ZH-L16C with gradient factors, for open circuit, CCR and CCR with open-circuit bailout. Every plan recomputes in your browser as you change the dive.</p>
+  </header>
+
+  <div class="app">
+    <form class="panel" id="controls" autocomplete="off">
+      <fieldset>
+        <legend>Mode</legend>
+        <div class="seg" role="radiogroup" aria-label="Mode">
+          <label><input type="radio" name="mode" id="mode-oc" value="OC">Open circuit</label>
+          <label><input type="radio" name="mode" id="mode-ccr" value="CCR">CCR</label>
+          <label><input type="radio" name="mode" id="mode-bail" value="BAIL">CCR + OC bailout</label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Dive</legend>
+        <div class="row">
+          <label class="field" for="in-depth"><span>Depth</span><span class="in"><input id="in-depth" type="number" min="6" max="150" step="1">m</span></label>
+          <label class="field" for="in-rt"><span>Bottom time</span><span class="in"><input id="in-rt" type="number" min="1" max="300" step="1">min</span></label>
+        </div>
+        <div class="row">
+          <label class="field" for="in-gflo"><span>GF low</span><span class="in"><input id="in-gflo" type="number" min="10" max="100" step="1">%</span></label>
+          <label class="field" for="in-gfhi"><span>GF high</span><span class="in"><input id="in-gfhi" type="number" min="10" max="100" step="1">%</span></label>
+        </div>
+        <p class="hint">Bottom time is the runtime at the start of the ascent, descent included.</p>
+      </fieldset>
+
+      <fieldset id="grp-bottom">
+        <legend>Bottom gas</legend>
+        <div class="row">
+          <label class="field" for="in-bo2"><span>O<sub>2</sub></span><span class="in"><input id="in-bo2" type="number" min="5" max="100" step="1">%</span></label>
+          <label class="field" for="in-bhe"><span>He</span><span class="in"><input id="in-bhe" type="number" min="0" max="95" step="1">%</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="grp-ccr">
+        <legend>Diluent and setpoints</legend>
+        <div class="row">
+          <label class="field" for="in-do2"><span>Diluent O<sub>2</sub></span><span class="in"><input id="in-do2" type="number" min="5" max="100" step="1">%</span></label>
+          <label class="field" for="in-dhe"><span>Diluent He</span><span class="in"><input id="in-dhe" type="number" min="0" max="95" step="1">%</span></label>
+        </div>
+        <div class="row">
+          <label class="field" for="in-sp1"><span>SP descent</span><span class="in"><input id="in-sp1" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
+          <label class="field" for="in-sp2"><span>SP bottom</span><span class="in"><input id="in-sp2" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
+          <label class="field" for="in-sp3"><span>SP deco</span><span class="in"><input id="in-sp3" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="grp-bail">
+        <legend>Bailout gas at the bottom</legend>
+        <div class="row">
+          <label class="field" for="in-ao2"><span>O<sub>2</sub></span><span class="in"><input id="in-ao2" type="number" min="5" max="100" step="1">%</span></label>
+          <label class="field" for="in-ahe"><span>He</span><span class="in"><input id="in-ahe" type="number" min="0" max="95" step="1">%</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="grp-deco">
+        <legend id="deco-legend">Deco gases</legend>
+        <div class="gas-list" id="gas-list"></div>
+        <div class="row"><button type="button" id="btn-add">Add gas</button></div>
+        <p class="hint">Switch depth: leave blank for the default (ppO<sub>2</sub> 1.40 up to 28 % O<sub>2</sub>, 1.50 up to 45 %, 1.60 above, pure O<sub>2</sub> at 6 m), or type a depth.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Rates and stops</legend>
+        <div class="row">
+          <label class="field" for="in-r1"><span>Descent</span><span class="in"><input id="in-r1" type="number" min="1" max="60" step="1">m/min</span></label>
+          <label class="field" for="in-r2"><span>Ascent</span><span class="in"><input id="in-r2" type="number" min="1" max="30" step="1">m/min</span></label>
+        </div>
+        <div class="row">
+          <label class="field" for="in-r3"><span>Between stops</span><span class="in"><input id="in-r3" type="number" min="1" max="30" step="1">m/min</span></label>
+          <label class="field" for="in-r4"><span>To surface</span><span class="in"><input id="in-r4" type="number" min="1" max="30" step="1">m/min</span></label>
+        </div>
+        <div class="row">
+          <label class="field" for="in-inc"><span>Stop spacing</span><span class="in"><select id="in-inc"><option value="3">3 m</option><option value="6">6 m</option></select></span></label>
+          <label class="field" for="in-last"><span>Last stop</span><span class="in"><select id="in-last"><option value="3">3 m</option><option value="6">6 m</option></select></span></label>
+        </div>
+        <label class="check" for="in-deep6"><input id="in-deep6" type="checkbox"> 6 m spacing for stops deeper than 30 m</label>
+        <p class="hint">Ascent is the rate from the bottom to the first stop.</p>
+      </fieldset>
+
+      <div class="row"><button type="button" id="btn-reset">Reset</button></div>
+      <p class="msg" id="msg" role="status" hidden></p>
+    </form>
+
+    <div class="results">
+      <div class="summary" id="summary"></div>
+
+      <section>
+        <div class="sec-head">
+          <h2>Dive plan</h2>
+          <p>Stop times include the travel from the previous stop. Runtime is in whole minutes.</p>
+        </div>
+        <div class="table-box"><table id="plan"></table></div>
+      </section>
+
+      <section>
+        <div class="sec-head">
+          <h2>Profile</h2>
+          <p>Depth and the ceiling at the gradient factor in control: GF low until the ascent starts, then the GF line from the first stop to the surface.</p>
+        </div>
+        <div class="legend" id="legend-prof"></div>
+        <div class="chart" id="chart-prof"><div class="tip" hidden></div></div>
+      </section>
+
+      <section>
+        <div class="sec-head">
+          <h2>Tissues on surfacing</h2>
+          <p id="tissue-caption">How close each compartment is to its M-value at the moment you reach the surface, as a gradient factor. The leading tissue is the highest bar.</p>
+        </div>
+        <div class="chart" id="chart-tis"><div class="tip" hidden></div></div>
+      </section>
+
+      <section class="notes">
+        <div>
+          <h3>How the plan is made</h3>
+          <ul>
+            <li>ZH-L16C tissues (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
+            <li>CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.</li>
+            <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
+            <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
+            <li>Open circuit and bailout: the richest gas within its switch depth is used. On the way to the first stop the switch happens at the switch depth; after that, on arrival at a stop.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>References</h3>
+          <ol class="refs">
+            <li>A. A. Bühlmann, <i>Decompression – Decompression Sickness</i>, Springer, 1984. ZH-L16 model and coefficients.</li>
+            <li>E. C. Baker, <i>Understanding M-values</i>, 1998. Gradient factors.</li>
+            <li>E. C. Baker, <i>Clearing Up the Confusion About "Deep Stops"</i>, 1998.</li>
+            <li>E. C. Baker, public-domain decompression programs in Fortran (stop scheduling, projected ascent).</li>
+            <li>H. R. Schreiner and P. L. Kelley, "A pragmatic view of decompression", <i>Underwater Physiology IV</i>, 1971.</li>
+            <li><a href="https://github.com/AquaBSD/libbuhlmann" target="_blank" rel="noopener">libbuhlmann</a>, open-source ZH-L16 and gradient factor library.</li>
+          </ol>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+// ZH-L16C (Buhlmann) + gradient factors (after Baker): open circuit, CCR, CCR with OC bailout.
+const ZHL = (() => {
+  const LN2 = Math.log(2);
+  const HTN2 = [5.0, 8.0, 12.5, 18.5, 27.0, 38.3, 54.3, 77.0, 109.0, 146.0, 187.0, 239.0, 305.0, 390.0, 498.0, 635.0];
+  const HTHE = [1.88, 3.02, 4.72, 6.99, 10.21, 14.48, 20.53, 29.11, 41.20, 55.19, 70.69, 90.34, 115.29, 147.42, 188.24, 240.03];
+  const AN2 = [1.1696, 1.0000, 0.8618, 0.7562, 0.6200, 0.5043, 0.4410, 0.4000, 0.3750, 0.3500, 0.3295, 0.3065, 0.2835, 0.2610, 0.2480, 0.2327];
+  const BN2 = [0.5578, 0.6514, 0.7222, 0.7825, 0.8126, 0.8434, 0.8693, 0.8910, 0.9092, 0.9222, 0.9319, 0.9403, 0.9477, 0.9544, 0.9602, 0.9653];
+  const AHE = [1.6189, 1.3830, 1.1919, 1.0458, 0.9220, 0.8205, 0.7305, 0.6502, 0.5950, 0.5545, 0.5333, 0.5189, 0.5181, 0.5176, 0.5172, 0.5119];
+  const BHE = [0.4770, 0.5747, 0.6527, 0.7223, 0.7582, 0.7957, 0.8279, 0.8553, 0.8757, 0.8903, 0.8997, 0.9073, 0.9122, 0.9171, 0.9217, 0.9267];
+  const KN2 = HTN2.map(h => LN2 / (h * 60));
+  const KHE = HTHE.map(h => LN2 / (h * 60));
+
+  const DEFAULTS = {
+    descent: 20, ascent: 6, deco: 3, surface: 3,       // m/min: down, to first stop, between stops, last stop to surface
+    stopInc: 3, sixMetreDeep: true, deepInc: 6, deepZone: 30,
+    lastStopOC: 3, lastStopCCR: 3, waypoint: 30,
+    mPerBar: 10, Psurf: 1.01325, PH2O: 0.0530, FN2air: 0.79,
+    firstStopTol: 0.05, dtTravel: 1, dtHold: 10, maxRuntime: 2000,
+  };
+
+  // Gas. opts: {deco:true} default ppO2 limits; {ppO2max}; {switch_m} explicit switch depth.
+  function gas(FO2, FHe = 0, opts = {}) {
+    const g = { FO2, FHe, FN2: Math.max(0, 1 - FO2 - FHe), ppO2max: NaN, switch_m: -Infinity };
+    let pp = opts.ppO2max != null ? opts.ppO2max : null, sw = opts.switch_m != null ? opts.switch_m : null;
+    if (opts.deco) {
+      if (FO2 >= 0.995) { pp = 1.60; sw = sw != null ? sw : 6; }
+      else pp = FO2 <= 0.28 + 1e-9 ? 1.40 : FO2 <= 0.45 + 1e-9 ? 1.50 : 1.60;
+    }
+    if ((pp != null || sw != null) && pp != null) {
+      g.ppO2max = pp;
+      g.switch_m = 3 * Math.floor(((pp / FO2 - 1) * 10) / 3 + 1e-9);
+    }
+    if (sw != null) g.switch_m = sw;
+    const o2 = Math.round(FO2 * 100), he = Math.round(FHe * 100);
+    if (he > 0) {
+      g.name = o2 + "/" + he;
+      g.label = (g.FN2 < 1e-9 ? "Heliox " : o2 > 21 ? "Triox " : "Trimix ") + g.name;
+    } else if (o2 >= 100) { g.name = "O2"; g.label = "Oxygen"; }
+    else if (o2 === 21) { g.name = "Air"; g.label = "Air"; }
+    else { g.name = "EAN" + o2; g.label = "Nitrox " + o2; }
+    return g;
+  }
+
+  function gfAt(depth, fs, gf) {
+    const lo = gf[0], hi = gf[1];
+    if (fs <= 0) return hi;
+    const g = hi - (hi - lo) * depth / fs;
+    return Math.min(Math.max(g, lo), hi);
+  }
+
+  function ceilingOf(PN2, PHe, GF, opt) {
+    let pc = -Infinity;
+    for (let i = 0; i < 16; i++) {
+      const pn = PN2[i], ph = PHe[i], pt = pn + ph;
+      const a = (AN2[i] * pn + AHE[i] * ph) / pt, b = (BN2[i] * pn + BHE[i] * ph) / pt;
+      const p = (pt - a * GF) / (GF / b - GF + 1);
+      if (p > pc) pc = p;
+    }
+    return (pc - opt.Psurf) * opt.mPerBar;
+  }
+
+  function plan(dive) {
+    const opt = Object.assign({}, DEFAULTS, dive.settings || {});
+    const ccr = dive.mode === "CCR", bailout = ccr && !!dive.bailout;
+    const decoGases = dive.decoGases || [];
+    const bottomGas = dive.bottomGas || dive.diluent;
+    opt.lastStop = ccr && !bailout ? opt.lastStopCCR : opt.lastStopOC;
+    if (!opt.sixMetreDeep) opt.deepInc = opt.stopInc;
+    const gf = dive.gf, sp = dive.sp || {};
+    const ocAsc = !ccr || bailout;
+    const pamb = d => opt.Psurf + d / opt.mPerBar;
+    const pn0 = (opt.Psurf - opt.PH2O) * opt.FN2air;
+    const S = { t: 0, d: 0, PN2: new Array(16).fill(pn0), PHe: new Array(16).fill(0), rec: true };
+    const rows = [], stops = [], trace = [];
+    const snap = () => { if (S.rec) trace.push({ t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice() }); };
+    snap();
+
+    function breathing(phase, d) {
+      if (ccr && !(phase === "ascent" && ocAsc)) {
+        return { ccr: true, gas: dive.diluent, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco };
+      }
+      let g = bottomGas;
+      if (phase === "ascent") for (const dg of decoGases) if (dg.switch_m >= d - 1e-9 && dg.FO2 > g.FO2) g = dg;
+      return { ccr: false, gas: g, sp: NaN };
+    }
+    function inspired(b, P) {
+      const g = b.gas, Pdry = Math.max(0, P - opt.PH2O);
+      if (!b.ccr) return [Pdry * g.FN2, Pdry * g.FHe, P * g.FO2];
+      const pO2 = Math.min(Math.max(b.sp, g.FO2 * Pdry), Pdry);
+      const inert = Pdry - pO2, fi = g.FN2 + g.FHe;
+      if (fi <= 1e-12) return [0, 0, pO2];
+      return [inert * g.FN2 / fi, inert * g.FHe / fi, pO2];
+    }
+    function travel(T, dTo, rate, b) {
+      const d0 = T.d, dist = Math.abs(dTo - d0);
+      if (dist < 1e-12) return;
+      const dur = dist / rate * 60, n = Math.max(1, Math.ceil(dur / opt.dtTravel - 1e-9)), h = dur / n;
+      const eN = KN2.map(k => Math.exp(-k * h)), eH = KHE.map(k => Math.exp(-k * h));
+      let [a2, ah] = inspired(b, pamb(d0));
+      const t0 = T.t;
+      for (let i = 1; i <= n; i++) {
+        const d1 = d0 + (dTo - d0) * i / n;
+        const [b2, bh] = inspired(b, pamb(d1));
+        const R2 = (b2 - a2) / h, Rh = (bh - ah) / h;
+        for (let c = 0; c < 16; c++) {
+          T.PN2[c] = a2 + R2 * (h - 1 / KN2[c]) - (a2 - T.PN2[c] - R2 / KN2[c]) * eN[c];
+          T.PHe[c] = ah + Rh * (h - 1 / KHE[c]) - (ah - T.PHe[c] - Rh / KHE[c]) * eH[c];
+        }
+        if (T.rec) trace.push({ t: t0 + h * i, d: d1, PN2: T.PN2.slice(), PHe: T.PHe.slice() });
+        a2 = b2; ah = bh;
+      }
+      T.t = t0 + dur; T.d = dTo;
+    }
+    function hold(T, dur, b) {
+      if (dur <= 1e-12) return;
+      const n = T.rec ? Math.max(1, Math.ceil(dur / opt.dtHold - 1e-9)) : 1, h = dur / n;
+      const [p2, ph] = inspired(b, pamb(T.d));
+      const eN = KN2.map(k => Math.exp(-k * h)), eH = KHE.map(k => Math.exp(-k * h));
+      const t0 = T.t;
+      for (let i = 1; i <= n; i++) {
+        for (let c = 0; c < 16; c++) {
+          T.PN2[c] = p2 + (T.PN2[c] - p2) * eN[c];
+          T.PHe[c] = ph + (T.PHe[c] - ph) * eH[c];
+        }
+        if (T.rec) trace.push({ t: t0 + h * i, d: T.d, PN2: T.PN2.slice(), PHe: T.PHe.slice() });
+      }
+      T.t = t0 + dur;
+    }
+    function addRow(kind, depth, dur, b) {
+      rows.push({ kind, depth, dur, rt: S.t, gas: b.gas, ccr: b.ccr, o2: b.ccr ? b.sp : pamb(depth) * b.gas.FO2 });
+    }
+    // Move up to dTo; OC splits the move at gas switch depths, and the move to the
+    // first stop is also split at the 30 m waypoint (adds "Asc to" rows).
+    function ascend(T, dTo, rate, addRows, midSwitch) {
+      let pts = [];
+      if (ocAsc && midSwitch && decoGases.length) pts = decoGases.map(g => g.switch_m);
+      if (addRows && opt.waypoint != null) pts.push(opt.waypoint);
+      pts = [...new Set(pts.filter(p => p < T.d - 1e-9 && p > dTo + 1e-9))].sort((x, y) => y - x);
+      pts.push(dTo);
+      for (const p of pts) {
+        const b = breathing("ascent", T.d);
+        travel(T, p, rate, b);
+        if (addRows) addRow("Asc", p, null, b);
+      }
+    }
+    const ceiling = (T, GF) => ceilingOf(T.PN2, T.PHe, GF, opt);
+    function roundUpStop(c) {
+      c += opt.firstStopTol;
+      if (c <= 1e-9) return 0;
+      const s = c > opt.deepZone + 1e-9 ? opt.deepInc * Math.ceil(c / opt.deepInc - 1e-9)
+                                        : opt.stopInc * Math.ceil(c / opt.stopInc - 1e-9);
+      return Math.max(s, opt.lastStop);
+    }
+    function nextStop(D, isFirst) {
+      const deep = isFirst ? D > opt.deepZone + 1e-9 : D - opt.deepInc > opt.deepZone + 1e-9;
+      const N = deep ? D - opt.deepInc : D - opt.stopInc;
+      return N < opt.lastStop - 1e-9 ? 0 : N;
+    }
+
+    // descent and bottom
+    let b = breathing("descent", 0);
+    travel(S, dive.depth, opt.descent, b);
+    addRow("Dec", S.d, null, b);
+    b = breathing("bottom", S.d);
+    const tBottom = dive.runtime * 60 - S.t;
+    if (tBottom < -1e-9) throw new Error(`The descent takes ${(S.t / 60).toFixed(1)} min, longer than the bottom time.`);
+    hold(S, Math.max(0, tBottom), b);
+    addRow("Level", S.d, tBottom, b);
+    const tAscent = S.t;
+
+    // first stop: GF-low ceiling rounded up, then Baker's projected-ascent check
+    let fs = roundUpStop(ceiling(S, gf[0]));
+    while (fs > 0 && fs < S.d) {
+      const S2 = { t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice(), rec: false };
+      ascend(S2, fs, opt.ascent, false, true);
+      if (ceiling(S2, gf[0]) <= fs + 1e-9) break;
+      fs = roundUpStop(fs + 1e-3 - opt.firstStopTol);
+    }
+    if (fs >= S.d && fs > 0) fs = Math.max(opt.lastStop, opt.stopInc * Math.floor(S.d / opt.stopInc + 1e-9));
+
+    if (fs <= 0) {
+      if (S.d > opt.lastStop) ascend(S, opt.lastStop, opt.ascent, true, true);
+      ascend(S, 0, opt.surface, false, true);
+    } else {
+      if (fs < S.d) ascend(S, fs, opt.ascent, true, true);
+      let D = S.d, isFirst = true, tLastDep = S.t;
+      while (D > 0) {
+        const N = nextStop(D, isFirst);
+        const gN = gfAt(N, fs, gf);
+        b = breathing("ascent", D);                 // gas switch on arrival at the stop
+        const tArr = S.t;
+        while (true) {                               // next whole minute, then 1 min at a time
+          hold(S, 60 * (Math.floor(S.t / 60 + 1e-6) + 1) - S.t, b);
+          if (ceiling(S, gN) - N <= 1e-9) break;
+          if (S.t > opt.maxRuntime * 60) throw new Error(`Cannot clear the ${D} m stop with these settings.`);
+        }
+        addRow("Stop", D, isFirst ? S.t - tArr : S.t - tLastDep, b);
+        rows[rows.length - 1].gf = gfAt(D, fs, gf);
+        stops.push([D, S.t - tArr, S.t]);
+        tLastDep = S.t; isFirst = false;
+        ascend(S, N, N === 0 ? opt.surface : opt.deco, false, false);
+        D = N;
+      }
+    }
+    addRow("Surface", 0, null, breathing("ascent", 0));
+
+    // ceiling (GF in control) along the trace
+    const ceil = trace.map(p => {
+      const g = p.t <= tAscent + 1e-9 ? gf[0] : gfAt(p.d, fs, gf);
+      return Math.max(0, ceilingOf(p.PN2, p.PHe, g, opt));
+    });
+    // tissues on surfacing: gradient factor reached = (Pt - Pamb) / (M - Pamb), M = Pamb/b + a
+    const Ps = opt.Psurf;
+    const tissues = S.PN2.map((pn, i) => {
+      const ph = S.PHe[i], pt = pn + ph;
+      const a = (AN2[i] * pn + AHE[i] * ph) / pt, bb = (BN2[i] * pn + BHE[i] * ph) / pt;
+      const M = Ps / bb + a;
+      return { n: i + 1, htN2: HTN2[i], htHe: HTHE[i], PN2: pn, PHe: ph, Pt: pt, M, gf: (pt - Ps) / (M - Ps) };
+    });
+    return { rows, stops, firstStop: fs, tAscent, tSurface: S.t,
+             lastDepart: stops.length ? stops[stops.length - 1][2] : S.t,
+             trace: trace.map((p, i) => [p.t, p.d, ceil[i]]), tissues };
+  }
+
+  return { plan, gas, gfAt, DEFAULTS };
+})();
+
+</script>
+<script>
+const DEFAULTS = {
+  mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70,
+  bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.3, sp3: 1.3, ao2: 12, ahe: 65,
+  decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[25, 35, ""], [50, 0, ""], [100, 0, ""]],
+  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true,
+};
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+let state = JSON.parse(JSON.stringify(DEFAULTS));
+
+// ---- helpers --------------------------------------------------------------------------
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function txt(parent, x, y, s, attrs) { const t = el("text", Object.assign({ x, y }, attrs || {}), parent); t.textContent = s; return t; }
+function h(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function mmss(sec) { const s = Math.round(sec); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+function scale(d0, d1, r0, r1) { return v => r0 + (v - d0) / (d1 - d0) * (r1 - r0); }
+function niceStep(span, maxTicks) { for (const s of [1, 2, 5, 10, 15, 20, 30, 60, 120]) if (span / s <= maxTicks) return s; return 240; }
+function lineKey(color, dash) {
+  const svg = el("svg", { class: "key", viewBox: "0 0 22 10", "aria-hidden": "true" });
+  const l = el("line", { x1: 1, y1: 5, x2: 21, y2: 5, "stroke-width": 2.5, "stroke-linecap": "round" }, svg);
+  l.style.stroke = "var(" + color + ")"; if (dash) l.setAttribute("stroke-dasharray", dash);
+  return svg;
+}
+function showMsg(s) { const m = $("msg"); m.textContent = s; m.hidden = !s; }
+
+// ---- inputs -------------------------------------------------------------------------
+const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4"];
+function writeInputs() {
+  NUM.forEach(k => $("in-" + k).value = state[k]);
+  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6;
+  ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
+  renderGasList();
+}
+function decoList() { return state.mode === "BAIL" ? state.decoBail : state.decoOC; }
+function renderGasList() {
+  const box = $("gas-list"); box.replaceChildren();
+  decoList().forEach((g, i) => {
+    const row = h("div", "gas-row");
+    const mk = (label, key, val, min, max, step, unit, ph) => {
+      const id = `gas-${i}-${key}`;
+      const lab = h("label", "field"); lab.htmlFor = id;
+      lab.appendChild(h("span", null, label));
+      const w = h("span", "in");
+      const inp = document.createElement("input");
+      Object.assign(inp, { id, type: "number", min, max, step, value: val });
+      if (ph != null) inp.placeholder = ph;
+      inp.dataset.gas = i; inp.dataset.key = key;
+      w.append(inp, document.createTextNode(unit)); lab.appendChild(w);
+      return lab;
+    };
+    const auto = autoSwitch(g[0], g[1]);
+    row.appendChild(h("span", "gname", gasName(g[0], g[1])));
+    row.append(mk("O₂", 0, g[0], 5, 100, 1, "%"), mk("He", 1, g[1], 0, 95, 1, "%"),
+               mk("Switch", 2, g[2], 3, 150, 1, "m", auto != null ? String(auto) : ""));
+    const x = h("button", "x", "×"); x.type = "button"; x.setAttribute("aria-label", "Remove gas");
+    x.addEventListener("click", () => { decoList().splice(i, 1); renderGasList(); update(); });
+    row.appendChild(x);
+    box.appendChild(row);
+  });
+  $("btn-add").hidden = decoList().length >= 5;
+}
+function autoSwitch(o2, he) {
+  if (!(o2 >= 5 && o2 <= 100)) return null;
+  const s = ZHL.gas(o2 / 100, (he || 0) / 100, { deco: true }).switch_m;
+  return s >= 0 ? s : null;
+}
+function gasName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).label : ""; }
+
+function readInputs() {
+  NUM.forEach(k => state[k] = Number($("in-" + k).value));
+  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked;
+  const m = document.querySelector('input[name="mode"]:checked'); state.mode = m ? m.value : "OC";
+}
+
+function validate() {
+  const s = state, bad = [];
+  const gasOk = (o2, he, name) => {
+    if (!(o2 >= 5 && o2 <= 100)) bad.push(name + " O2 must be 5 to 100 %.");
+    else if (!(he >= 0 && o2 + he <= 100)) bad.push(name + " O2 + He must not exceed 100 %.");
+  };
+  if (!(s.depth >= 6 && s.depth <= 150)) bad.push("Depth must be 6 to 150 m.");
+  if (!(s.r1 > 0 && s.r2 > 0 && s.r3 > 0 && s.r4 > 0)) bad.push("Rates must be above 0 m/min.");
+  else if (!(s.rt >= s.depth / s.r1)) bad.push(`Bottom time must be at least the descent time (${(s.depth / s.r1).toFixed(1)} min).`);
+  if (!(s.rt <= 300)) bad.push("Bottom time must be 300 min or less.");
+  if (!(s.gflo >= 10 && s.gflo <= 100 && s.gfhi >= 10 && s.gfhi <= 100)) bad.push("GF low and GF high must be 10 to 100 %.");
+  else if (s.gflo > s.gfhi) bad.push("GF low must not be above GF high.");
+  if (s.mode === "OC") gasOk(s.bo2, s.bhe, "Bottom gas");
+  else {
+    gasOk(s.do2, s.dhe, "Diluent");
+    if (![s.sp1, s.sp2, s.sp3].every(v => v >= 0.4 && v <= 1.6)) bad.push("Setpoints must be 0.4 to 1.6 bar.");
+    if (s.mode === "BAIL") gasOk(s.ao2, s.ahe, "Bailout gas");
+  }
+  if (s.mode !== "CCR") decoList().forEach((g, i) => {
+    gasOk(g[0], g[1], "Deco gas " + (i + 1));
+    if (g[2] !== "" && !(Number(g[2]) >= 3)) bad.push(`Deco gas ${i + 1} switch depth must be at least 3 m.`);
+  });
+  return bad;
+}
+
+function buildDive() {
+  const s = state;
+  const dive = {
+    depth: s.depth, runtime: s.rt, gf: [s.gflo / 100, s.gfhi / 100],
+    settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
+                lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6 },
+  };
+  const deco = () => decoList().map(g => ZHL.gas(g[0] / 100, g[1] / 100,
+    g[2] === "" ? { deco: true } : { deco: true, switch_m: Number(g[2]) }));
+  if (s.mode === "OC") {
+    Object.assign(dive, { mode: "OC", bottomGas: ZHL.gas(s.bo2 / 100, s.bhe / 100), decoGases: deco() });
+  } else {
+    Object.assign(dive, { mode: "CCR", diluent: ZHL.gas(s.do2 / 100, s.dhe / 100),
+                          sp: { descent: s.sp1, bottom: s.sp2, deco: s.sp3 } });
+    if (s.mode === "BAIL") Object.assign(dive, { bailout: true, bottomGas: ZHL.gas(s.ao2 / 100, s.ahe / 100), decoGases: deco() });
+  }
+  return dive;
+}
+
+function showGroups() {
+  const m = state.mode;
+  $("grp-bottom").hidden = m !== "OC";
+  $("grp-ccr").hidden = m === "OC";
+  $("grp-bail").hidden = m !== "BAIL";
+  $("grp-deco").hidden = m === "CCR";
+  $("deco-legend").textContent = m === "BAIL" ? "Bailout deco gases" : "Deco gases";
+}
+
+// ---- render: summary --------------------------------------------------------------
+function renderSummary(P) {
+  const box = $("summary"); box.replaceChildren();
+  const lead = P.tissues.reduce((a, b) => (b.gf > a.gf ? b : a));
+  const items = [
+    ["Runtime", Math.round(P.tSurface / 60), "min", "at the surface"],
+    ["Deco", Math.round((P.tSurface - P.tAscent) / 60), "min", "ascent and stops"],
+    ["First stop", P.firstStop > 0 ? P.firstStop : "none", P.firstStop > 0 ? "m" : "", P.firstStop > 0 ? `${P.stops.length} stops` : "no stops needed"],
+    ["Leading tissue", "#" + lead.n, "", `GF ${Math.round(lead.gf * 100)} % on surfacing`],
+  ];
+  items.forEach(([k, v, u, s]) => {
+    const d = h("div", "sum");
+    d.appendChild(h("div", "k", k));
+    const vv = h("div", "v", String(v)); if (u) vv.appendChild(h("small", null, u));
+    d.append(vv, h("div", "s", s));
+    box.appendChild(d);
+  });
+}
+
+// ---- render: plan table -------------------------------------------------------------
+function renderPlan(P) {
+  const tb = $("plan"); tb.replaceChildren();
+  const hr = tb.createTHead().insertRow();
+  ["", "Depth", "Time", "Runtime", "Gas", "ppO₂ / SP", "GF"].forEach((t, i) => {
+    const th = document.createElement("th"); th.textContent = t; if (i === 4) th.className = "l"; hr.appendChild(th);
+  });
+  const body = tb.createTBody();
+  const WHAT = { Dec: "Descend to", Level: "Bottom", Asc: "Ascend to", Stop: "Stop", Surface: "Surface" };
+  P.rows.forEach(r => {
+    const tr = body.insertRow();
+    tr.className = r.kind === "Stop" ? "stop" : (r.kind === "Asc" || r.kind === "Dec") ? "minor" : "";
+    const cells = [
+      WHAT[r.kind],
+      r.kind === "Surface" ? "" : r.depth + " m",
+      r.dur == null ? "" : mmss(r.dur),
+      String(Math.floor(r.rt / 60 + 1e-9)),
+      r.ccr ? "Diluent " + r.gas.name : r.gas.label,
+      r.kind === "Surface" ? "" : r.ccr ? r.o2.toFixed(2) + " SP" : (r.kind === "Level" || r.kind === "Stop") ? r.o2.toFixed(2) : "",
+      r.kind === "Stop" ? Math.round(r.gf * 100) + " %" : "",
+    ];
+    cells.forEach((c, i) => { const td = tr.insertCell(); td.textContent = c; if (i === 4) td.className = "l"; });
+  });
+}
+
+// ---- tooltip --------------------------------------------------------------------------
+function showTip(chart, head, rows, px, py) {
+  const tip = chart.querySelector(".tip"); tip.replaceChildren();
+  tip.appendChild(h("div", "t-head", head));
+  rows.forEach(([v, l, key]) => {
+    const r = h("div", "r");
+    if (key) r.appendChild(key);
+    r.append(h("strong", null, v), h("span", null, l));
+    tip.appendChild(r);
+  });
+  tip.hidden = false;
+  const cw = chart.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+  let x = px + 14; if (x + tw > cw - 4) x = px - tw - 14; if (x < 4) x = 4;
+  let y = py - th / 2; y = Math.max(4, Math.min(y, chart.clientHeight - th - 4));
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip(chart) { chart.querySelector(".tip").hidden = true; }
+function frame(chart, height, m) {
+  chart.querySelectorAll("svg").forEach(n => n.remove()); hideTip(chart);
+  const W = chart.clientWidth - 16, H = height;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  chart.prepend(svg);
+  return { svg, W, H, x0: m.l, x1: W - m.r, y0: m.t, y1: H - m.b };
+}
+
+// ---- profile chart ----------------------------------------------------------------------
+function drawProfile(P, depth) {
+  const chart = $("chart-prof"), narrow = chart.clientWidth < 560;
+  const f = frame(chart, narrow ? 270 : 320, { l: 46, r: narrow ? 12 : 20, t: 12, b: 38 });
+  const tr = P.trace, tEnd = P.tSurface / 60;
+  const xs = niceStep(tEnd, narrow ? 5 : 8), xEnd = tEnd * 1.01;
+  const dMax = Math.ceil(depth / 10) * 10, ys = dMax > 60 ? 20 : 10;
+  const X = scale(0, xEnd, f.x0, f.x1), Y = scale(0, dMax, f.y0, f.y1);
+  const g = el("g", {}, f.svg);
+  for (let t = 0; t <= xEnd + 1e-9; t += xs) {
+    el("line", { x1: X(t), x2: X(t), y1: f.y0, y2: f.y1, stroke: "var(--grid)", "stroke-width": 1 }, g);
+    txt(g, X(t), f.y1 + 17, t, { "text-anchor": "middle" });
+  }
+  txt(g, (f.x0 + f.x1) / 2, f.y1 + 33, "runtime (min)", { "text-anchor": "middle" });
+  for (let d = 0; d <= dMax; d += ys) {
+    el("line", { x1: f.x0, x2: f.x1, y1: Y(d), y2: Y(d), stroke: "var(--grid)", "stroke-width": 1 }, g);
+    txt(g, f.x0 - 8, Y(d) + 4, d + " m", { "text-anchor": "end" });
+  }
+  const line = (idx, color, w) => {
+    const p = el("polyline", { points: tr.map(q => X(q[0] / 60) + "," + Y(q[idx])).join(" "), fill: "none",
+      "stroke-width": w, "stroke-linejoin": "round", "stroke-linecap": "round" }, g);
+    p.style.stroke = "var(" + color + ")";
+  };
+  line(2, "--c-ceil", 1.5);
+  line(1, "--c-depth", 2);
+
+  const cross = el("line", { y1: f.y0, y2: f.y1, stroke: "var(--ink-2)", "stroke-width": 1, visibility: "hidden" }, g);
+  const hit = el("rect", { x: f.x0, y: f.y0, width: f.x1 - f.x0, height: f.y1 - f.y0, fill: "transparent" }, f.svg);
+  hit.addEventListener("pointermove", ev => {
+    const r = f.svg.getBoundingClientRect();
+    const t = Math.max(0, Math.min(tEnd, (ev.clientX - r.left - f.x0) / (f.x1 - f.x0) * xEnd)) * 60;
+    let lo = 0, hi = tr.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (tr[mid][0] < t) lo = mid; else hi = mid; }
+    const q = Math.abs(tr[lo][0] - t) < Math.abs(tr[hi][0] - t) ? tr[lo] : tr[hi];
+    cross.setAttribute("x1", X(q[0] / 60)); cross.setAttribute("x2", X(q[0] / 60)); cross.setAttribute("visibility", "visible");
+    const row = P.rows.find(rw => rw.rt >= q[0] - 1e-6) || P.rows[P.rows.length - 1];
+    showTip(chart, "runtime " + mmss(q[0]), [
+      [q[1].toFixed(1) + " m", "depth", lineKey("--c-depth")],
+      [q[2].toFixed(1) + " m", "ceiling", lineKey("--c-ceil")],
+      [row.ccr ? "loop" : row.gas.name, "gas", null],
+    ], X(q[0] / 60), ev.clientY - chart.getBoundingClientRect().top);
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(chart); });
+  f.svg.setAttribute("role", "img");
+  f.svg.setAttribute("aria-label", `Dive profile to ${depth} m, surfacing at ${Math.round(tEnd)} min, with the decompression ceiling.`);
+}
+
+// ---- tissue chart -----------------------------------------------------------------------
+function drawTissues(P, gfhi) {
+  const chart = $("chart-tis"), narrow = chart.clientWidth < 560;
+  const f = frame(chart, narrow ? 250 : 290, { l: 46, r: narrow ? 12 : 20, t: 22, b: 38 });
+  const T = P.tissues, lead = T.reduce((a, b) => (b.gf > a.gf ? b : a));
+  const vals = T.map(t => t.gf * 100);
+  const yMin = Math.min(0, Math.floor(Math.min(...vals) / 10) * 10);
+  const yMax = Math.max(10, Math.ceil(Math.max(...vals, gfhi) / 10) * 10 + 10);
+  const Y = scale(yMin, yMax, f.y1, f.y0);
+  const band = (f.x1 - f.x0) / 16, bw = Math.min(24, band * 0.62);
+  const g = el("g", {}, f.svg);
+  const ys = niceStep(yMax - yMin, 6);
+  for (let v = Math.ceil(yMin / ys) * ys; v <= yMax + 1e-9; v += ys) {
+    el("line", { x1: f.x0, x2: f.x1, y1: Y(v), y2: Y(v), stroke: v === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }, g);
+    txt(g, f.x0 - 8, Y(v) + 4, v + " %", { "text-anchor": "end" });
+  }
+  T.forEach((t, i) => {
+    const cx = f.x0 + band * (i + 0.5), v = t.gf * 100;
+    const top = Y(Math.max(0, v)), bot = Y(Math.min(0, v));
+    const r = Math.min(4, Math.abs(bot - top) / 2);
+    const x = cx - bw / 2, hgt = Math.max(0.5, bot - top);
+    const path = v >= 0
+      ? `M${x},${bot} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${bot} Z`
+      : `M${x},${top} V${bot - r} Q${x},${bot} ${x + r},${bot} H${x + bw - r} Q${x + bw},${bot} ${x + bw},${bot - r} V${top} Z`;
+    const p = el("path", { d: hgt < 1 ? `M${x},${top} h${bw} v${hgt} h${-bw} Z` : path }, g);
+    p.style.fill = t === lead ? "var(--c-lead)" : "var(--c-bar)";
+    txt(g, cx, f.y1 + 17, t.n, { "text-anchor": "middle", class: t === lead ? "lbl" : "" });
+  });
+  txt(g, (f.x0 + f.x1) / 2, f.y1 + 33, "compartment", { "text-anchor": "middle" });
+  // GF high reference and leader label
+  el("line", { x1: f.x0, x2: f.x1, y1: Y(gfhi), y2: Y(gfhi), stroke: "var(--ink-2)", "stroke-width": 1, "stroke-dasharray": "4 4" }, g);
+  txt(g, f.x1 - 2, Y(gfhi) - 6, `GF high ${gfhi} %`, { "text-anchor": "end", class: "lbl" });
+  const lx = f.x0 + band * (lead.n - 0.5);
+  txt(g, lx, Y(lead.gf * 100) - 8, `${Math.round(lead.gf * 100)} %`, { "text-anchor": "middle", class: "lbl" });
+
+  const hit = el("rect", { x: f.x0, y: f.y0, width: f.x1 - f.x0, height: f.y1 - f.y0, fill: "transparent" }, f.svg);
+  hit.addEventListener("pointermove", ev => {
+    const r = f.svg.getBoundingClientRect();
+    const i = Math.max(0, Math.min(15, Math.floor((ev.clientX - r.left - f.x0) / band)));
+    const t = T[i];
+    showTip(chart, `#${t.n} · half-time N₂ ${t.htN2} / He ${t.htHe} min`, [
+      [Math.round(t.gf * 100) + " %", "gradient factor", null],
+      [t.PN2.toFixed(3), "N₂ bar", null],
+      [t.PHe.toFixed(3), "He bar", null],
+      [t.M.toFixed(3), "M-value bar", null],
+    ], f.x0 + band * (i + 0.5), ev.clientY - chart.getBoundingClientRect().top);
+  });
+  hit.addEventListener("pointerleave", () => hideTip(chart));
+  f.svg.setAttribute("role", "img");
+  f.svg.setAttribute("aria-label", `Tissue gradient factors on surfacing; compartment ${lead.n} leads at ${Math.round(lead.gf * 100)} %.`);
+  $("tissue-caption").textContent = `How close each compartment is to its M-value when you reach the surface, as a gradient factor. Compartment ${lead.n} (half-time N₂ ${lead.htN2} min, He ${lead.htHe} min) leads at ${Math.round(lead.gf * 100)} %.`;
+}
+
+// ---- update -----------------------------------------------------------------------------
+let current = null;
+function update() {
+  readInputs(); showGroups();
+  const bad = validate();
+  if (bad.length) { showMsg(bad.join(" ") + " Showing the last valid plan."); return; }
+  let P;
+  try { P = ZHL.plan(buildDive()); }
+  catch (e) { showMsg(e.message + " Showing the last valid plan."); return; }
+  showMsg("");
+  current = { P, depth: state.depth, gfhi: state.gfhi };
+  renderSummary(P); renderPlan(P); drawCharts();
+}
+function drawCharts() {
+  if (!current) return;
+  drawProfile(current.P, current.depth);
+  drawTissues(current.P, current.gfhi);
+}
+(function legend() {
+  const box = $("legend-prof");
+  [["--c-depth", "Depth"], ["--c-ceil", "Ceiling (GF in control)"]].forEach(([c, l]) => {
+    const s = h("span"); s.appendChild(lineKey(c)); s.appendChild(document.createTextNode(l)); box.appendChild(s);
+  });
+})();
+
+let deb;
+$("controls").addEventListener("input", ev => {
+  const t = ev.target;
+  if (t.dataset && t.dataset.gas != null) {
+    const g = decoList()[Number(t.dataset.gas)], k = Number(t.dataset.key);
+    g[k] = k === 2 ? t.value : Number(t.value);
+    if (k < 2) {   // refresh the gas name and default switch depth for this row
+      const row = t.closest(".gas-row");
+      row.querySelector(".gname").textContent = gasName(g[0], g[1]);
+      const auto = autoSwitch(g[0], g[1]);
+      row.querySelector(`[data-key="2"]`).placeholder = auto != null ? String(auto) : "";
+    }
+  }
+  if (t.name === "mode") { readInputs(); renderGasList(); }
+  clearTimeout(deb); deb = setTimeout(update, 120);
+});
+$("controls").addEventListener("submit", e => e.preventDefault());
+$("btn-add").addEventListener("click", () => { decoList().push([32, 0, ""]); renderGasList(); update(); });
+$("btn-reset").addEventListener("click", () => { state = JSON.parse(JSON.stringify(DEFAULTS)); writeInputs(); update(); });
+writeInputs();
+update();
+let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(drawCharts, 60); }).observe(document.querySelector(".results"));
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
