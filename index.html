@@ -282,6 +282,11 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
           <label class="field" for="in-sp2"><span>SP bottom</span><span class="in"><input id="in-sp2" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
           <label class="field" for="in-sp3"><span>SP deco</span><span class="in"><input id="in-sp3" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
         </div>
+        <div id="dsw-wrap" class="levels">
+          <p class="hint">Diluent changes on the ascent: each new diluent is used from its depth up.</p>
+          <div class="levels" id="dilsw"></div>
+          <div class="row"><button type="button" id="btn-dsw">Add diluent change</button></div>
+        </div>
         <div id="o2b-wrap" class="levels">
           <label class="check" for="in-o2b"><input id="in-o2b" type="checkbox"> OC oxygen for the last minutes of the last stop</label>
           <div class="row" id="o2b-row">
@@ -409,6 +414,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
             <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level.</li>
             <li>Last-stop GF (optional): the stops follow the GF low to GF high line, but the last stop is held until surfacing would leave every compartment at or below this GF.</li>
+            <li>CCR diluent changes (optional): on the ascent each listed diluent is used from its depth up, switched like an OC gas (at the depth on the way to the first stop, then on arrival at a stop). The setpoint stays as set.</li>
             <li>CCR oxygen at the last stop (optional, either or both): the last minutes of the loop's last stop on open-circuit oxygen, and extra time on oxygen after the loop clears. The ascent from the last stop is then on oxygen.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
@@ -504,6 +510,8 @@ const ZHL = (() => {
     const opt = Object.assign({}, DEFAULTS, dive.settings || {});
     const ccr = dive.mode === "CCR", bailout = ccr && !!dive.bailout;
     const decoGases = dive.decoGases || [];
+    // CCR: diluent changes on the ascent, each taking over from its depth upward
+    const dilSw = ccr && !(dive.bailout) ? (dive.dilSwitches || []).filter(x => x && x.gas && x.depth > 0) : [];
     let bottomGas = dive.bottomGas || dive.diluent;         // OC: changes with a level's own gas
     opt.lastStop = ccr && !bailout ? opt.lastStopCCR : opt.lastStopOC;
     if (!opt.sixMetreDeep) opt.deepInc = opt.stopInc;
@@ -532,7 +540,13 @@ const ZHL = (() => {
 
     function breathing(phase, d) {
       if (ccr && !(phase === "ascent" && ocAsc)) {
-        const loop = { ccr: true, phase, gas: dive.diluent, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco };
+        let dil = dive.diluent;
+        if (phase === "ascent") {                            // the shallowest change already passed
+          let best = null;
+          for (const x of dilSw) if (x.depth >= d - 1e-9 && (!best || x.depth < best.depth)) best = x;
+          if (best) dil = best.gas;
+        }
+        const loop = { ccr: true, phase, gas: dil, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco };
         if (phase !== "ascent" || !decoGases.length) return loop;
         let dg = null;                                       // CCR with OC deco gases
         for (const x of decoGases) if (x.switch_m >= d - 1e-9 && (!dg || x.FO2 > dg.FO2)) dg = x;
@@ -616,6 +630,7 @@ const ZHL = (() => {
     function ascend(T, dTo, rate, addRows, midSwitch) {
       let pts = [];
       if (midSwitch && decoGases.length) pts = decoGases.map(g => g.switch_m);
+      if (midSwitch && dilSw.length) pts = pts.concat(dilSw.map(x => x.depth));
       if (addRows && opt.waypoint != null) pts.push(opt.waypoint);
       pts = [...new Set(pts.filter(p => p < T.d - 1e-9 && p > dTo + 1e-9))].sort((x, y) => y - x);
       pts.push(dTo);
@@ -854,7 +869,7 @@ const DEFAULTS = {
   mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70, gf3on: false, gf3: 70, o2b: false, o2bt: 15, o2a: false, o2at: 15,
   perMode: { OC: { depth: 60, rt: 30, extra: [] }, CCR: { depth: 80, rt: 30, extra: [] }, BAIL: { depth: 80, rt: 30, extra: [] } },
   bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3, ao2: 12, ahe: 65,
-  decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[35, 25, ""], [50, 0, ""], [100, 0, ""]], decoCCR: [],
+  decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[35, 25, ""], [50, 0, ""], [100, 0, ""]], decoCCR: [], dilSw: [],
   r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12, tail: 120,
 };
 const NS = "http://www.w3.org/2000/svg";
@@ -911,6 +926,35 @@ function renderLevels() {
     : "Bottom time is the runtime at the start of the ascent, descent included.";
 }
 
+// ---- diluent changes on the ascent (CCR) -------------------------------------------------
+function renderDilSw() {
+  const box = $("dilsw"); box.replaceChildren();
+  state.dilSw.forEach((D, i) => {
+    const row = h("div", "lvl-row");
+    const mk = (label, key, val, min, max, unit) => {
+      const id = `dsw-${i}-${key}`;
+      const lab = h("label", "field"); lab.htmlFor = id;
+      lab.appendChild(h("span", null, label));
+      const w = h("span", "in");
+      const inp = document.createElement("input");
+      Object.assign(inp, { id, type: "number", min, max, step: 1, value: val });
+      inp.dataset.dsw = i; inp.dataset.key = key;
+      w.append(inp, document.createTextNode(unit)); lab.appendChild(w);
+      return lab;
+    };
+    const head = h("div", "lvl-head"); head.appendChild(h("span", "dsw-name", "Diluent " + mixName(D[0], D[1])));
+    const x = h("button", "x", "\u00d7"); x.type = "button"; x.setAttribute("aria-label", "Remove diluent change");
+    x.addEventListener("click", () => { state.dilSw.splice(i, 1); renderDilSw(); update(); });
+    head.appendChild(x); row.appendChild(head);
+    const r1 = h("div", "row");
+    r1.append(mk("O\u2082", 0, D[0], 5, 100, "%"), mk("He", 1, D[1], 0, 95, "%"), mk("From", 2, D[2], 3, 150, "m"));
+    row.appendChild(r1);
+    box.appendChild(row);
+  });
+  $("btn-dsw").hidden = state.dilSw.length >= 4;
+}
+function mixName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).mix : ""; }
+
 // ---- inputs -------------------------------------------------------------------------
 const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd", "tail", "gf3", "o2bt", "o2at"];
 function writeInputs() {
@@ -919,7 +963,8 @@ function writeInputs() {
   $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss; $("in-gf3on").checked = state.gf3on; $("in-o2b").checked = state.o2b; $("in-o2a").checked = state.o2a;
   ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
   state.extra = state.extra || [];
-  renderGasList(); renderLevels();
+  state.dilSw = state.dilSw || [];
+  renderGasList(); renderLevels(); renderDilSw();
 }
 function decoList() { return state.mode === "BAIL" ? state.decoBail : state.mode === "CCR" ? (state.decoCCR = state.decoCCR || []) : state.decoOC; }
 function renderGasList() {
@@ -985,6 +1030,10 @@ function validate() {
   if (!(s.gflo >= 10 && s.gflo <= 100 && s.gfhi >= 10 && s.gfhi <= 100)) bad.push("GF low and GF high must be 10 to 100 %.");
   else if (s.gflo > s.gfhi) bad.push("GF low must not be above GF high.");
   else if (s.gf3on && !(s.gf3 >= 10 && s.gf3 <= s.gfhi)) bad.push("Last-stop GF must be 10 % to GF high.");
+  if (s.mode === "CCR") s.dilSw.forEach(([o2, he, d], i) => {
+    gasOk(o2, he, `Diluent change ${i + 1}`);
+    if (!(d >= 3 && d <= 150)) bad.push(`Diluent change ${i + 1} depth must be 3 to 150 m.`);
+  });
   if (s.mode === "CCR" && ((s.o2b && !(s.o2bt >= 1 && s.o2bt <= 120)) || (s.o2a && !(s.o2at >= 1 && s.o2at <= 120)))) bad.push("Time on O2 must be 1 to 120 min.");
   if (s.mode === "OC") gasOk(s.bo2, s.bhe, "Bottom gas");
   else {
@@ -1004,6 +1053,7 @@ function buildDive() {
   const s = state;
   const dive = {
     depth: s.depth, runtime: s.rt, gf: [s.gflo / 100, s.gfhi / 100], gfLast: s.gf3on ? s.gf3 / 100 : null,
+    dilSwitches: s.mode === "CCR" ? s.dilSw.map(([o2, he, d]) => ({ gas: ZHL.gas(o2 / 100, he / 100), depth: d })) : [],
     lastStopO2: s.mode === "CCR" && (s.o2b || s.o2a) ? { last: s.o2b ? s.o2bt : 0, after: s.o2a ? s.o2at : 0 } : null,
     levels: s.extra.map(([d, tm, o2, he]) => (s.mode === "OC" ? { depth: d, time: tm, gas: ZHL.gas(o2 / 100, he / 100) } : { depth: d, time: tm })),
     settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
@@ -1029,6 +1079,7 @@ function showGroups() {
   $("grp-bail").hidden = m !== "BAIL";
   const ocGas = m !== "CCR" || decoList().length > 0 || state.o2b || state.o2a;
   $("o2b-wrap").hidden = m !== "CCR";
+  $("dsw-wrap").hidden = m !== "CCR";
   $("o2b-row").hidden = !state.o2b;
   $("o2a-row").hidden = !state.o2a;
   $("grp-gasplan").hidden = !ocGas;
@@ -1371,6 +1422,10 @@ function drawCharts() {
 let deb;
 $("controls").addEventListener("input", ev => {
   const t = ev.target;
+  if (t.dataset && t.dataset.dsw != null) {
+    const D = state.dilSw[Number(t.dataset.dsw)]; D[Number(t.dataset.key)] = Number(t.value);
+    t.closest(".lvl-row").querySelector(".dsw-name").textContent = "Diluent " + mixName(D[0], D[1]);
+  }
   if (t.dataset && t.dataset.lvl != null) state.extra[Number(t.dataset.lvl)][Number(t.dataset.key)] = Number(t.value);
   if (t.dataset && t.dataset.gas != null) {
     const g = decoList()[Number(t.dataset.gas)], k = Number(t.dataset.key);
@@ -1393,6 +1448,10 @@ $("controls").addEventListener("input", ev => {
   clearTimeout(deb); deb = setTimeout(update, 120);
 });
 $("controls").addEventListener("submit", e => e.preventDefault());
+$("btn-dsw").addEventListener("click", () => {
+  const SUGGEST = [[21, 35, 36], [50, 0, 21], [100, 0, 6]];
+  state.dilSw.push(SUGGEST[Math.min(state.dilSw.length, SUGGEST.length - 1)].slice()); renderDilSw(); update();
+});
 $("btn-level").addEventListener("click", () => {
   const prev = state.extra.length ? state.extra[state.extra.length - 1]
     : [Number($("in-depth").value), 0, Number($("in-bo2").value), Number($("in-bhe").value)];
