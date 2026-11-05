@@ -31,7 +31,7 @@ After the first visit it also works offline.
 
 ## Method
 
-- ZH-L16C tissues (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water at 10 m per bar.
+- ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water at 10 m per bar.
 - CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.
 - First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid. It moves one stop deeper if the ascent would already violate it (Baker's projected ascent).
 - Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.

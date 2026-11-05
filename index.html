@@ -305,8 +305,8 @@ td .m { color: var(--muted); }
 
       <section>
         <div class="sec-head">
-          <h2>Tissues on surfacing</h2>
-          <p id="tissue-caption">How close each compartment is to its M-value at the moment you reach the surface, as a gradient factor. The leading tissue is the highest bar.</p>
+          <h2>Compartments on surfacing</h2>
+          <p id="tissue-caption">How close each compartment is to its M-value at the moment you reach the surface, as a gradient factor. The leading compartment is the highest bar.</p>
         </div>
         <div class="chart" id="chart-tis"><div class="tip" hidden></div></div>
       </section>
@@ -315,7 +315,7 @@ td .m { color: var(--muted); }
         <div>
           <h3>How the plan is made</h3>
           <ul>
-            <li>ZH-L16C tissues (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
+            <li>ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
             <li>CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
             <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
@@ -708,7 +708,7 @@ function renderSummary(P) {
     ["Runtime", Math.round(P.tSurface / 60), "min", "at the surface"],
     ["Deco", Math.round((P.tSurface - P.tAscent) / 60), "min", "ascent and stops"],
     ["First stop", P.firstStop > 0 ? P.firstStop : "none", P.firstStop > 0 ? "m" : "", P.firstStop > 0 ? `${P.stops.length} stops` : "no stops needed"],
-    ["Leading tissue", "#" + lead.n, "", `GF ${Math.round(lead.gf * 100)} % on surfacing`],
+    ["Leading compartment", "#" + lead.n, "", `GF ${Math.round(lead.gf * 100)} % on surfacing`],
   ];
   items.forEach(([k, v, u, s]) => {
     const d = h("div", "sum");
@@ -865,7 +865,7 @@ function drawTissues(P, gfhi) {
   });
   hit.addEventListener("pointerleave", () => hideTip(chart));
   f.svg.setAttribute("role", "img");
-  f.svg.setAttribute("aria-label", `Tissue gradient factors on surfacing; compartment ${lead.n} leads at ${Math.round(lead.gf * 100)} %.`);
+  f.svg.setAttribute("aria-label", `Compartment gradient factors on surfacing; compartment ${lead.n} leads at ${Math.round(lead.gf * 100)} %.`);
   $("tissue-caption").textContent = `How close each compartment is to its M-value when you reach the surface, as a gradient factor. Compartment ${lead.n} (half-time N₂ ${lead.htN2} min, He ${lead.htHe} min) leads at ${Math.round(lead.gf * 100)} %.`;
 }
 
