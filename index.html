@@ -621,7 +621,7 @@ const DEFAULTS = {
   mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70,
   perMode: { OC: { depth: 60, rt: 30 }, CCR: { depth: 80, rt: 30 }, BAIL: { depth: 80, rt: 30 } },
   bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3, ao2: 12, ahe: 65,
-  decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[25, 35, ""], [50, 0, ""], [100, 0, ""]],
+  decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[35, 25, ""], [50, 0, ""], [100, 0, ""]],
   r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3,
 };
 const NS = "http://www.w3.org/2000/svg";
@@ -1000,7 +1000,7 @@ $("controls").addEventListener("input", ev => {
   clearTimeout(deb); deb = setTimeout(update, 120);
 });
 $("controls").addEventListener("submit", e => e.preventDefault());
-$("btn-add").addEventListener("click", () => { decoList().push([35, 25, ""]); renderGasList(); update(); });
+$("btn-add").addEventListener("click", () => { decoList().push([32, 0, ""]); renderGasList(); update(); });
 $("btn-reset").addEventListener("click", () => { state = JSON.parse(JSON.stringify(DEFAULTS)); writeInputs(); update(); });
 writeInputs();
 update();
