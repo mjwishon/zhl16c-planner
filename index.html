@@ -386,6 +386,7 @@ const ZHL = (() => {
       g.label = (g.FN2 < 1e-9 ? "Heliox " : o2 > 21 ? "Triox " : "Trimix ") + g.name;
     } else if (o2 >= 100) { g.name = "O2"; g.label = "Oxygen"; }
     else if (o2 === 21) { g.name = "Air"; g.label = "Air"; }
+    else if (o2 < 21) { g.name = o2 + "/00"; g.label = g.name; }   // hypoxic, no helium
     else { g.name = "EAN" + o2; g.label = "Nitrox " + o2; }
     return g;
   }
