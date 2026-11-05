@@ -18,7 +18,7 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 - Bottom gas, or diluent and setpoints (descent, bottom, deco), and the bailout gas
 - Up to five deco or bailout gases, each with a default or custom switch depth
 - Descent rate, ascent rate to the first stop, rate between stops, and rate to the surface
-- Stop spacing, last stop depth (any depth from 1 to 9 m, e.g. 3, 4.5 or 5), and 6 m spacing for stops deeper than 30 m
+- Stop spacing, last stop depth (any depth from 1 to 9 m, default 6 m), and 6 m spacing for stops deeper than 30 m (off by default)
 - No stops while a direct ascent stays within GF high (on by default)
 - Bottom and deco RMV for gas planning (open circuit and bailout; defaults 15 and 12 L/min)
 - Safety stop on no-deco dives, with its depth and time (on by default, 3 min at 5 m)
