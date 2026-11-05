@@ -10,6 +10,8 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 
 - Mode: open circuit, CCR, or CCR with OC bailout
 - Depth, bottom time (runtime at the start of the ascent), GF low and GF high
+- Up to four more levels (for example 80 m for 20 min, then 60 m for 20 min); an added level's time is the time at depth, and in open circuit each level can have its own gas
+- In CCR, optional open-circuit deco gases (you stay on the loop until the first one's switch depth)
 - Bottom gas, or diluent and setpoints (descent, bottom, deco), and the bailout gas
 - Up to five deco or bailout gases, each with a default or custom switch depth
 - Descent rate, ascent rate to the first stop, rate between stops, and rate to the surface
@@ -39,9 +41,10 @@ After the first visit it also works offline.
 - ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water at 10 m per bar.
 - CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.
 - END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas.
+- Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. No stops are added between levels; deco is planned from the end of the last level.
 - No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no stops (can be switched off).
 - First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid. It moves one stop deeper if the ascent would already violate it (Baker's projected ascent).
-- Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.
+- Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF is within 1 cm of the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.
 - Open circuit and bailout use the richest gas within its switch depth. On the way to the first stop the switch happens at the switch depth; after that, on arrival at a stop.
 
 ## References

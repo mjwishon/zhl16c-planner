@@ -126,6 +126,10 @@ button {
 }
 button:hover { border-color: var(--axis); }
 button.x { padding: 6px 9px; line-height: 1; margin-bottom: 1px; }
+.levels { display: grid; gap: 8px; }
+.levels:empty { display: none; }
+.lvl-row { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--grid); }
+.lvl-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 500; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
 .msg { font-size: 13.5px; color: var(--ink); border-left: 3px solid var(--warn-line); padding: 6px 10px;
   background: color-mix(in srgb, var(--warn-line) 9%, transparent); max-width: none; }
@@ -244,11 +248,13 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
           <label class="field" for="in-depth"><span>Depth</span><span class="in"><input id="in-depth" type="number" min="6" max="150" step="1">m</span></label>
           <label class="field" for="in-rt"><span>Bottom time</span><span class="in"><input id="in-rt" type="number" min="1" max="300" step="1">min</span></label>
         </div>
+        <div class="levels" id="levels"></div>
+        <div class="row"><button type="button" id="btn-level">Add level</button></div>
         <div class="row">
           <label class="field" for="in-gflo"><span>GF low</span><span class="in"><input id="in-gflo" type="number" min="10" max="100" step="1">%</span></label>
           <label class="field" for="in-gfhi"><span>GF high</span><span class="in"><input id="in-gfhi" type="number" min="10" max="100" step="1">%</span></label>
         </div>
-        <p class="hint">Bottom time is the runtime at the start of the ascent, descent included.</p>
+        <p class="hint" id="dive-hint">Bottom time is the runtime at the start of the ascent, descent included.</p>
       </fieldset>
 
       <fieldset id="grp-bottom">
@@ -282,6 +288,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
 
       <fieldset id="grp-deco">
         <legend id="deco-legend">Deco gases</legend>
+        <p class="hint" id="deco-hint-ccr" hidden>Optional. You stay on the loop until the first gas's switch depth, then breathe open circuit.</p>
         <div class="gas-list" id="gas-list"></div>
         <div class="row"><button type="button" id="btn-add">Add gas</button></div>
         <p class="hint">Switch depth: leave blank for the default (ppO<sub>2</sub> 1.40 up to 28 % O<sub>2</sub>, 1.50 up to 45 %, 1.60 above, pure O<sub>2</sub> at 6 m), or type a depth.</p>
@@ -384,9 +391,10 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
             <li>ppO<sub>2</sub> is shown exactly and flagged above 1.6 bar, except pure oxygen at the standard 6 m stop (1.61).</li>
             <li>Gas: RMV times ambient pressure over time, in surface litres. Bottom RMV for the descent, bottom, ascent and first stop, deco RMV after. Switch depths and gas volumes use 1 bar plus 1 bar per 10.08 m.</li>
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
+            <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. No stops are added between levels; deco is planned from the end of the last level.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
-            <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
+            <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF is within 1 cm of the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
             <li>Open circuit and bailout: the richest gas within its switch depth is used. On the way to the first stop the switch happens at the switch depth; after that, on arrival at a stop.</li>
           </ul>
         </div>
@@ -423,7 +431,7 @@ const ZHL = (() => {
     stopInc: 3, sixMetreDeep: true, deepInc: 6, deepZone: 30,
     lastStopOC: 3, lastStopCCR: 3, waypoint: 30,
     mPerBar: 10, Psurf: 1.01325, PH2O: 0.0530, FN2air: 0.79,
-    firstStopTol: 0.05, dtTravel: 1, dtHold: 10, maxRuntime: 2000,
+    firstStopTol: 0.05, clearTol: 0.01, dtTravel: 1, dtHold: 10, maxRuntime: 2000,
     safetyStop: false, safetyDepth: 5, safetyTime: 3,
     surfaceTail: 0,                                    // minutes of surface off-gassing to show (air)
     rmvBottom: 15, rmvDeco: 12,                        // L/min at the surface, open circuit
@@ -478,7 +486,7 @@ const ZHL = (() => {
     const opt = Object.assign({}, DEFAULTS, dive.settings || {});
     const ccr = dive.mode === "CCR", bailout = ccr && !!dive.bailout;
     const decoGases = dive.decoGases || [];
-    const bottomGas = dive.bottomGas || dive.diluent;
+    let bottomGas = dive.bottomGas || dive.diluent;         // OC: changes with a level's own gas
     opt.lastStop = ccr && !bailout ? opt.lastStopCCR : opt.lastStopOC;
     if (!opt.sixMetreDeep) opt.deepInc = opt.stopInc;
     const gf = dive.gf, sp = dive.sp || {};
@@ -501,7 +509,11 @@ const ZHL = (() => {
 
     function breathing(phase, d) {
       if (ccr && !(phase === "ascent" && ocAsc)) {
-        return { ccr: true, phase, gas: dive.diluent, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco };
+        const loop = { ccr: true, phase, gas: dive.diluent, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco };
+        if (phase !== "ascent" || !decoGases.length) return loop;
+        let dg = null;                                       // CCR with OC deco gases
+        for (const x of decoGases) if (x.switch_m >= d - 1e-9 && (!dg || x.FO2 > dg.FO2)) dg = x;
+        return dg ? { ccr: false, phase, gas: dg, sp: NaN } : loop;
       }
       let g = bottomGas;
       if (phase === "ascent") for (const dg of decoGases) if (dg.switch_m >= d - 1e-9 && dg.FO2 > g.FO2) g = dg;
@@ -568,7 +580,7 @@ const ZHL = (() => {
     // first stop is also split at the 30 m waypoint (adds "Asc to" rows).
     function ascend(T, dTo, rate, addRows, midSwitch) {
       let pts = [];
-      if (ocAsc && midSwitch && decoGases.length) pts = decoGases.map(g => g.switch_m);
+      if (midSwitch && decoGases.length) pts = decoGases.map(g => g.switch_m);
       if (addRows && opt.waypoint != null) pts.push(opt.waypoint);
       pts = [...new Set(pts.filter(p => p < T.d - 1e-9 && p > dTo + 1e-9))].sort((x, y) => y - x);
       pts.push(dTo);
@@ -592,15 +604,25 @@ const ZHL = (() => {
       return N < opt.lastStop - 1e-9 ? 0 : N;
     }
 
-    // descent and bottom
-    let b = breathing("descent", 0);
-    travel(S, dive.depth, opt.descent, b);
-    addRow("Dec", S.d, null, b);
-    b = breathing("bottom", S.d);
-    const tBottom = dive.runtime * 60 - S.t;
-    if (tBottom < -1e-9) throw new Error(`The descent takes ${(S.t / 60).toFixed(1)} min, longer than the bottom time.`);
-    hold(S, Math.max(0, tBottom), b);
-    addRow("Level", S.d, tBottom, b);
+    // descent, bottom and any further levels. Level 1 time = runtime at its end (descent
+    // included); each further level's time includes the travel from the level before.
+    const levels = [{ depth: dive.depth, time: dive.runtime }].concat(dive.levels || []);
+    let b;
+    levels.forEach((L, i) => {
+      const prev = S.d;
+      b = breathing(i === 0 ? "descent" : "bottom", S.d);
+      travel(S, L.depth, L.depth >= prev ? opt.descent : opt.ascent, b);
+      if (i === 0 || Math.abs(L.depth - prev) > 1e-9) addRow(L.depth >= prev ? "Dec" : "Asc", S.d, null, b);
+      if (i > 0 && L.gas && !ccr) bottomGas = L.gas;          // switch to the level's gas on arrival
+      b = breathing("bottom", S.d);
+      let tHold = L.time * 60;
+      if (i === 0) {
+        tHold = L.time * 60 - S.t;
+        if (tHold < -1e-9) throw new Error(`The descent takes ${(S.t / 60).toFixed(1)} min, longer than the bottom time.`);
+      }
+      hold(S, Math.max(0, tHold), b);
+      addRow("Level", S.d, tHold, b);
+    });
     const tAscent = S.t;
 
     // first stop: GF-low ceiling rounded up, then Baker's projected-ascent check
@@ -654,7 +676,7 @@ const ZHL = (() => {
         const tArr = S.t;
         while (true) {                               // next whole minute, then 1 min at a time
           hold(S, 60 * (Math.floor(S.t / 60 + 1e-6) + 1) - S.t, b);
-          if (ceiling(S, gN) - N <= 1e-9) break;
+          if (ceiling(S, gN) - N <= opt.clearTol + 1e-9) break;   // cleared within 1 cm
           if (S.t > opt.maxRuntime * 60) throw new Error(`Cannot clear the ${D} m stop with these settings.`);
         }
         addRow("Stop", D, isFirst ? S.t - tArr : S.t - tLastDep, b);
@@ -672,6 +694,14 @@ const ZHL = (() => {
       const g = p.t <= tAscent + 1e-9 ? gf[0] : gfAt(p.d, fs, gf);
       return Math.max(0, ceilingOf(p.PN2, p.PHe, g, opt));
     });
+    // levels: worst point where the GF-low ceiling was deeper than the diver (no stops are added there)
+    let levelViolation = null;
+    trace.forEach((p, i) => {
+      if (p.t > tAscent + 1e-9) return;
+      const x = ceil[i] - p.d;
+      if (x > 0.05 && (!levelViolation || x > levelViolation.excess)) levelViolation = { excess: x, depth: p.d, ceil: ceil[i], t: p.t };
+    });
+
     // tissues on surfacing: gradient factor reached = (Pt - Pamb) / (M - Pamb), M = Pamb/b + a
     const Ps = opt.Psurf;
     const tissues = S.PN2.map((pn, i) => {
@@ -680,7 +710,7 @@ const ZHL = (() => {
       const M = Ps / bb + a;
       return { n: i + 1, htN2: HTN2[i], htHe: HTHE[i], PN2: pn, PHe: ph, Pt: pt, M, gf: (pt - Ps) / (M - Ps) };
     });
-    return { rows, stops, firstStop: fs, ndl, tAscent, tSurface: S.t,
+    return { rows, stops, firstStop: fs, ndl, tAscent, tSurface: S.t, levelViolation,
              lastDepart: stops.length ? stops[stops.length - 1][2] : S.t,
              trace: trace.map((p, i) => [p.t, p.d, ceil[i]]), tissues,
              loading: (() => {                              // compartment pressures over time (about 600 points)
@@ -710,9 +740,9 @@ const ZHL = (() => {
 <script>
 const DEFAULTS = {
   mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70,
-  perMode: { OC: { depth: 60, rt: 30 }, CCR: { depth: 80, rt: 30 }, BAIL: { depth: 80, rt: 30 } },
+  perMode: { OC: { depth: 60, rt: 30, extra: [] }, CCR: { depth: 80, rt: 30, extra: [] }, BAIL: { depth: 80, rt: 30, extra: [] } },
   bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3, ao2: 12, ahe: 65,
-  decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[35, 25, ""], [50, 0, ""], [100, 0, ""]],
+  decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[35, 25, ""], [50, 0, ""], [100, 0, ""]], decoCCR: [],
   r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12, tail: 120,
 };
 const NS = "http://www.w3.org/2000/svg";
@@ -739,6 +769,36 @@ function lineKey(color, dash) {
 }
 function showMsg(s) { const m = $("msg"); m.textContent = s; m.hidden = !s; }
 
+// ---- levels ----------------------------------------------------------------------------
+function renderLevels() {
+  const box = $("levels"); box.replaceChildren();
+  state.extra.forEach((L, i) => {
+    const row = h("div", "lvl-row");
+    const mk = (label, key, val, min, max, unit) => {
+      const id = `lvl-${i}-${key}`;
+      const lab = h("label", "field"); lab.htmlFor = id;
+      lab.appendChild(h("span", null, label));
+      const w = h("span", "in");
+      const inp = document.createElement("input");
+      Object.assign(inp, { id, type: "number", min, max, step: 1, value: val });
+      inp.dataset.lvl = i; inp.dataset.key = key;
+      w.append(inp, document.createTextNode(unit)); lab.appendChild(w);
+      return lab;
+    };
+    const head = h("div", "lvl-head"); head.appendChild(h("span", null, `Level ${i + 2}`));
+    const x = h("button", "x", "\u00d7"); x.type = "button"; x.setAttribute("aria-label", `Remove level ${i + 2}`);
+    x.addEventListener("click", () => { state.extra.splice(i, 1); renderLevels(); update(); });
+    head.appendChild(x); row.appendChild(head);
+    const r1 = h("div", "row"); r1.append(mk("Depth", 0, L[0], 6, 150, "m"), mk("Time at depth", 1, L[1], 1, 300, "min")); row.appendChild(r1);
+    if (state.mode === "OC") { const r2 = h("div", "row"); r2.append(mk("O\u2082", 2, L[2], 5, 100, "%"), mk("He", 3, L[3], 0, 95, "%")); row.appendChild(r2); }
+    box.appendChild(row);
+  });
+  $("btn-level").hidden = state.extra.length >= 4;
+  $("dive-hint").textContent = state.extra.length
+    ? "Bottom time is the runtime at the end of level 1, descent included. An added level's time is the time at that depth; the travel to it comes on top." + (state.mode === "OC" ? " Each level can use its own gas." : "")
+    : "Bottom time is the runtime at the start of the ascent, descent included.";
+}
+
 // ---- inputs -------------------------------------------------------------------------
 const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd", "tail"];
 function writeInputs() {
@@ -746,9 +806,10 @@ function writeInputs() {
   NUM.forEach(k => $("in-" + k).value = state[k]);
   $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss;
   ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
-  renderGasList();
+  state.extra = state.extra || [];
+  renderGasList(); renderLevels();
 }
-function decoList() { return state.mode === "BAIL" ? state.decoBail : state.decoOC; }
+function decoList() { return state.mode === "BAIL" ? state.decoBail : state.mode === "CCR" ? (state.decoCCR = state.decoCCR || []) : state.decoOC; }
 function renderGasList() {
   const box = $("gas-list"); box.replaceChildren();
   decoList().forEach((g, i) => {
@@ -786,7 +847,7 @@ function gasName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).la
 function readInputs() {
   const m = document.querySelector('input[name="mode"]:checked'); state.mode = m ? m.value : "OC";
   NUM.forEach(k => state[k] = Number($("in-" + k).value));
-  state.perMode[state.mode] = { depth: state.depth, rt: state.rt };
+  state.perMode[state.mode] = { depth: state.depth, rt: state.rt, extra: state.extra };
   state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked; state.ss = $("in-ss").checked;
 }
 
@@ -800,6 +861,12 @@ function validate() {
   if (!(s.r1 > 0 && s.r2 > 0 && s.r3 > 0 && s.r4 > 0)) bad.push("Rates must be above 0 m/min.");
   else if (!(s.rt >= s.depth / s.r1)) bad.push(`Bottom time must be at least the descent time (${(s.depth / s.r1).toFixed(1)} min).`);
   if (!(s.rt <= 300)) bad.push("Bottom time must be 300 min or less.");
+  s.extra.forEach(([d, tm, o2, he], i) => {
+    const n = i + 2;
+    if (!(d >= 6 && d <= 150)) bad.push(`Level ${n} depth must be 6 to 150 m.`);
+    if (!(tm >= 1 && tm <= 300)) bad.push(`Level ${n} time must be 1 to 300 min.`);
+    if (s.mode === "OC") gasOk(o2, he, `Level ${n} gas`);
+  });
   if (!(s.tail >= 0 && s.tail <= 1440)) bad.push("Time after surfacing must be 0 to 1440 min.");
   if (s.ss && !(s.ssd >= 2 && s.ssd <= 15 && s.ssm >= 1 && s.ssm <= 15)) bad.push("Safety stop must be 2 to 15 m and 1 to 15 min.");
   if (!(s.gflo >= 10 && s.gflo <= 100 && s.gfhi >= 10 && s.gfhi <= 100)) bad.push("GF low and GF high must be 10 to 100 %.");
@@ -810,8 +877,8 @@ function validate() {
     if (![s.sp1, s.sp2, s.sp3].every(v => v >= 0.4 && v <= 1.6)) bad.push("Setpoints must be 0.4 to 1.6 bar.");
     if (s.mode === "BAIL") gasOk(s.ao2, s.ahe, "Bailout gas");
   }
-  if (s.mode !== "CCR" && !(s.rmvb >= 5 && s.rmvb <= 60 && s.rmvd >= 5 && s.rmvd <= 60)) bad.push("RMV must be 5 to 60 L/min.");
-  if (s.mode !== "CCR") decoList().forEach((g, i) => {
+  if ((s.mode !== "CCR" || decoList().length) && !(s.rmvb >= 5 && s.rmvb <= 60 && s.rmvd >= 5 && s.rmvd <= 60)) bad.push("RMV must be 5 to 60 L/min.");
+  decoList().forEach((g, i) => {
     gasOk(g[0], g[1], "Deco gas " + (i + 1));
     if (g[2] !== "" && !(Number(g[2]) >= 3)) bad.push(`Deco gas ${i + 1} switch depth must be at least 3 m.`);
   });
@@ -822,6 +889,7 @@ function buildDive() {
   const s = state;
   const dive = {
     depth: s.depth, runtime: s.rt, gf: [s.gflo / 100, s.gfhi / 100],
+    levels: s.extra.map(([d, tm, o2, he]) => (s.mode === "OC" ? { depth: d, time: tm, gas: ZHL.gas(o2 / 100, he / 100) } : { depth: d, time: tm })),
     settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
                 lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6, noDecoCheck: s.nodeco,
                 safetyStop: s.ss, safetyDepth: s.ssd, safetyTime: s.ssm, rmvBottom: s.rmvb, rmvDeco: s.rmvd, surfaceTail: s.tail },
@@ -832,7 +900,7 @@ function buildDive() {
     Object.assign(dive, { mode: "OC", bottomGas: ZHL.gas(s.bo2 / 100, s.bhe / 100), decoGases: deco() });
   } else {
     Object.assign(dive, { mode: "CCR", diluent: ZHL.gas(s.do2 / 100, s.dhe / 100),
-                          sp: { descent: s.sp1, bottom: s.sp2, deco: s.sp3 } });
+                          sp: { descent: s.sp1, bottom: s.sp2, deco: s.sp3 }, decoGases: deco() });
     if (s.mode === "BAIL") Object.assign(dive, { bailout: true, bottomGas: ZHL.gas(s.ao2 / 100, s.ahe / 100), decoGases: deco() });
   }
   return dive;
@@ -843,11 +911,12 @@ function showGroups() {
   $("grp-bottom").hidden = m !== "OC";
   $("grp-ccr").hidden = m === "OC";
   $("grp-bail").hidden = m !== "BAIL";
-  $("grp-deco").hidden = m === "CCR";
-  $("grp-gasplan").hidden = m === "CCR";
-  $("sec-gas").hidden = m === "CCR";
+  const ocGas = m !== "CCR" || decoList().length > 0;
+  $("grp-gasplan").hidden = !ocGas;
+  $("sec-gas").hidden = !ocGas;
+  $("deco-hint-ccr").hidden = m !== "CCR";
   $("ss-row").hidden = !state.ss;
-  $("deco-legend").textContent = m === "BAIL" ? "Bailout deco gases" : "Deco gases";
+  $("deco-legend").textContent = m === "BAIL" ? "Bailout deco gases" : m === "CCR" ? "OC deco gases" : "Deco gases";
 }
 
 // ---- render: summary --------------------------------------------------------------
@@ -880,7 +949,8 @@ function renderPlan(P) {
     const th = document.createElement("th"); th.textContent = t; if (i === 4) th.className = "l"; hr.appendChild(th);
   });
   const body = tb.createTBody();
-  const WHAT = { Dec: "Descend to", Level: "Bottom", Asc: "Ascend to", Stop: "Stop", Safety: "Safety stop", Surface: "Surface" };
+  const nLevels = P.rows.filter(r => r.kind === "Level").length;
+  const WHAT = { Dec: "Descend to", Level: nLevels > 1 ? "Level" : "Bottom", Asc: "Ascend to", Stop: "Stop", Safety: "Safety stop", Surface: "Surface" };
   P.rows.forEach(r => {
     const tr = body.insertRow();
     tr.className = (r.kind === "Stop" || r.kind === "Safety") ? "stop" : (r.kind === "Asc" || r.kind === "Dec") ? "minor" : "";
@@ -909,7 +979,7 @@ function renderPlan(P) {
 // ---- gas box ---------------------------------------------------------------------------
 function renderGas(P) {
   const tb = $("gas"); tb.replaceChildren();
-  if (state.mode === "CCR") return;
+  if (!P.gasUse.length) return;
   const hr = tb.createTHead().insertRow();
   ["Gas", "Time", "Litres"].forEach(t => { const th = document.createElement("th"); th.textContent = t; hr.appendChild(th); });
   const body = tb.createTBody();
@@ -1137,6 +1207,12 @@ function drawLoading(P, key, chartId, gasName) {
   f.svg.setAttribute("aria-label", `${gasName} pressure in the 16 compartments over the dive, up to ${maxV.toFixed(2)} bar.`);
 }
 
+function levelWarning(P) {
+  const v = P.levelViolation;
+  if (!v) return "";
+  return `At runtime ${mmss(v.t)} the GF-low ceiling (${v.ceil.toFixed(1)} m) is deeper than you are (${v.depth.toFixed(1)} m). The planner adds no stops between levels: make that level deeper or the level before it shorter.`;
+}
+
 // ---- update -----------------------------------------------------------------------------
 let current = null;
 function update() {
@@ -1146,8 +1222,8 @@ function update() {
   let P;
   try { P = ZHL.plan(buildDive()); }
   catch (e) { showMsg(e.message + " Showing the last valid plan."); return; }
-  showMsg(oxygenWarnings(P));
-  current = { P, depth: state.depth, gfhi: state.gfhi };
+  showMsg([oxygenWarnings(P), levelWarning(P)].filter(Boolean).join(" "));
+  current = { P, depth: Math.max(state.depth, ...state.extra.map(L => L[0])), gfhi: state.gfhi };
   renderSummary(P); renderPlan(P); renderGas(P); drawCharts();
 }
 function drawCharts() {
@@ -1167,6 +1243,7 @@ function drawCharts() {
 let deb;
 $("controls").addEventListener("input", ev => {
   const t = ev.target;
+  if (t.dataset && t.dataset.lvl != null) state.extra[Number(t.dataset.lvl)][Number(t.dataset.key)] = Number(t.value);
   if (t.dataset && t.dataset.gas != null) {
     const g = decoList()[Number(t.dataset.gas)], k = Number(t.dataset.key);
     g[k] = k === 2 ? t.value : Number(t.value);
@@ -1179,14 +1256,20 @@ $("controls").addEventListener("input", ev => {
   }
   if (t.name === "mode") {
     // keep the old mode's depth and bottom time, then load the new mode's
-    state.perMode[state.mode] = { depth: Number($("in-depth").value), rt: Number($("in-rt").value) };
+    state.perMode[state.mode] = { depth: Number($("in-depth").value), rt: Number($("in-rt").value), extra: state.extra };
     state.mode = t.value;
     $("in-depth").value = state.perMode[state.mode].depth; $("in-rt").value = state.perMode[state.mode].rt;
-    renderGasList();
+    state.extra = state.perMode[state.mode].extra || [];
+    renderGasList(); renderLevels();
   }
   clearTimeout(deb); deb = setTimeout(update, 120);
 });
 $("controls").addEventListener("submit", e => e.preventDefault());
+$("btn-level").addEventListener("click", () => {
+  const prev = state.extra.length ? state.extra[state.extra.length - 1]
+    : [Number($("in-depth").value), 0, Number($("in-bo2").value), Number($("in-bhe").value)];
+  state.extra.push([Math.max(6, prev[0] - 20), 10, prev[2], prev[3]]); renderLevels(); update();
+});
 $("btn-add").addEventListener("click", () => { decoList().push([32, 0, ""]); renderGasList(); update(); });
 $("btn-reset").addEventListener("click", () => { state = JSON.parse(JSON.stringify(DEFAULTS)); writeInputs(); update(); });
 writeInputs();
