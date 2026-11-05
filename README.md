@@ -1,6 +1,6 @@
 # ZH-L16C Planner
 
-> **Not for dive planning.** Experimental model output. This planner has not been tested or validated for real dives. Do not plan or dive any profile from this app.
+> **For reference and cross-checking.** This planner follows the published Bühlmann ZH-L16C model with gradient factors and comes without warranty. Check every plan against your own planning software or dive computer, and dive within your training.
 
 **App:** https://mjwishon.github.io/zhl16c-planner/
 
