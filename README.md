@@ -24,7 +24,7 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 
 ## What it shows
 
-- The dive plan as a runtime table (depth, stop time, runtime, gas, setpoint, ppO₂, END, GF at each stop)
+- The dive plan as a runtime table (depth, stop time, runtime, gas, setpoint, ppO₂, END, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
 - Gas needed per open-circuit gas, in surface litres
 - The profile with the decompression ceiling
 - A bar chart of all 16 compartments on surfacing, showing how close each is to its M-value and which one leads

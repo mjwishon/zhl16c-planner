@@ -259,6 +259,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
         <div class="row" id="gf3-row">
           <label class="field" for="in-gf3"><span>Last-stop GF</span><span class="in"><input id="in-gf3" type="number" min="10" max="100" step="1">%</span></label>
         </div>
+        <p class="hint" id="gf3-hint" hidden></p>
         <p class="hint" id="dive-hint">Bottom time is the runtime at the start of the ascent, descent included.</p>
       </fieldset>
 
@@ -352,7 +353,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
       <section>
         <div class="sec-head">
           <h2>Dive plan</h2>
-          <p>Stop times include the travel from the previous stop. Runtime is in whole minutes.</p>
+          <p>Stop times include the travel from the previous stop. Runtime is in whole minutes. Surf GF is the gradient factor you would surface with if you left at that point.</p>
         </div>
         <div class="table-box"><table id="plan"></table></div>
       </section>
@@ -595,7 +596,19 @@ const ZHL = (() => {
       const o2Stop = !b.ccr && b.gas.FO2 >= 0.995 && depth <= 6 + 1e-9;
       const po2Limit = o2Stop ? Math.min(ins[2], 1.6) : ins[2];
       rows.push({ kind, depth, dur, rt: S.t, gas: b.gas, ccr: b.ccr, sp: b.ccr ? b.sp : null,
-                  po2: ins[2], po2Limit, end, o2: b.ccr ? b.sp : P * b.gas.FO2 });
+                  po2: ins[2], po2Limit, end, o2: b.ccr ? b.sp : P * b.gas.FO2, surfGf: surfGF(S) });
+    }
+    // surfacing GF: the highest (Pt - Psurf) / (M(Psurf) - Psurf) over the compartments,
+    // i.e. the GF you would reach if you surfaced right now
+    function surfGF(T) {
+      let m = -Infinity;
+      for (let i = 0; i < 16; i++) {
+        const pn = T.PN2[i], ph = T.PHe[i], pt = pn + ph;
+        const a = (AN2[i] * pn + AHE[i] * ph) / pt, bb = (BN2[i] * pn + BHE[i] * ph) / pt;
+        const M = opt.Psurf / bb + a, g = (pt - opt.Psurf) / (M - opt.Psurf);
+        if (g > m) m = g;
+      }
+      return m;
     }
     // Move up to dTo; OC splits the move at gas switch depths, and the move to the
     // first stop is also split at the 30 m waypoint (adds "Asc to" rows).
@@ -736,23 +749,23 @@ const ZHL = (() => {
             hold(T, 60 * (Math.floor(T.t / 60 + 1e-6) + 1) - T.t, bb);
             if (T.t > opt.maxRuntime * 60) throw new Error(`Cannot clear the ${D} m stop with these settings.`);
           };
-          let tSwitch;
+          let tSwitch, sgSwitch;
           if (o2b.when === "after") {                // clear on the loop, then the O2 time on top
             do toMinute(S, b); while (!clear(S));
-            tSwitch = S.t;
+            tSwitch = S.t; sgSwitch = surfGF(S);
             hold(S, sec, bO2);
           } else {                                   // the last minutes of the loop's stop on O2
             const T = { t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice(), rec: false };
             do toMinute(T, b); while (!clear(T));
             tSwitch = Math.max(tArr, T.t - sec);
-            hold(S, tSwitch - S.t, b);
+            hold(S, tSwitch - S.t, b); sgSwitch = surfGF(S);
             hold(S, T.t - S.t, bO2);
             while (!clear(S)) toMinute(S, bO2);
           }
           const prevT = isFirst ? tArr : tLastDep;
           if (tSwitch > tArr + 1e-9) {
             addRow("Stop", D, tSwitch - prevT, b);
-            rows[rows.length - 1].rt = tSwitch;
+            rows[rows.length - 1].rt = tSwitch; rows[rows.length - 1].surfGf = sgSwitch;
             rows[rows.length - 1].gf = gfAt(D, fs, gf);
           }
           addRow("Stop", D, tSwitch > tArr + 1e-9 ? S.t - tSwitch : S.t - prevT, bO2);
@@ -1013,6 +1026,9 @@ function showGroups() {
   $("deco-hint-ccr").hidden = m !== "CCR";
   $("ss-row").hidden = !state.ss;
   $("gf3-row").hidden = !state.gf3on;
+  const gf3Idle = state.gf3on && state.gf3 >= state.gfhi;
+  $("gf3-hint").hidden = !gf3Idle;
+  $("gf3-hint").textContent = gf3Idle ? `No effect while it is at or above GF high (${state.gfhi} %). Set it lower, e.g. GF high 85 with the last stop held to 70.` : "";
   $("deco-legend").textContent = m === "BAIL" ? "Bailout deco gases" : m === "CCR" ? "OC deco gases" : "Deco gases";
 }
 
@@ -1042,7 +1058,7 @@ function renderPlan(P) {
   const tb = $("plan"); tb.replaceChildren();
   const hr = tb.createTHead().insertRow();
   const showSP = P.rows.some(r => r.ccr);
-  ["", "Depth", "Time", "Runtime", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "END", "GF"].forEach((t, i) => {
+  ["", "Depth", "Time", "Runtime", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "END", "GF", "Surf GF"].forEach((t, i) => {
     const th = document.createElement("th"); th.textContent = t; if (i === 4) th.className = "l"; hr.appendChild(th);
   });
   const body = tb.createTBody();
@@ -1063,6 +1079,7 @@ function renderPlan(P) {
       showPO2 ? r.po2.toFixed(2) : "",
       surf ? "" : Math.round(r.end) + " m",
       r.kind === "Stop" ? Math.round(r.gf * 100) + " %" + (r.gfHold != null ? ` \u2192 ${Math.round(r.gfHold * 100)} %` : "") : "",
+      (r.kind === "Stop" || r.kind === "Level" || r.kind === "Safety") ? Math.round(r.surfGf * 100) + " %" : "",
     ];
     const po2Col = showSP ? 6 : 5;
     cells.forEach((c, i) => {
@@ -1171,7 +1188,7 @@ function drawProfile(P, depth) {
 }
 
 // ---- tissue chart -----------------------------------------------------------------------
-function drawTissues(P, gfhi) {
+function drawTissues(P, gfhi, gf3) {
   const chart = $("chart-tis"), narrow = chart.clientWidth < 560;
   const f = frame(chart, narrow ? 250 : 290, { l: 46, r: narrow ? 12 : 20, t: 22, b: 38 });
   const T = P.tissues, lead = T.reduce((a, b) => (b.gf > a.gf ? b : a));
@@ -1202,6 +1219,10 @@ function drawTissues(P, gfhi) {
   // GF high reference and leader label
   el("line", { x1: f.x0, x2: f.x1, y1: Y(gfhi), y2: Y(gfhi), stroke: "var(--ink-2)", "stroke-width": 1, "stroke-dasharray": "4 4" }, g);
   txt(g, f.x1 - 2, Y(gfhi) - 6, `GF high ${gfhi} %`, { "text-anchor": "end", class: "lbl" });
+  if (gf3 != null && gf3 < gfhi) {
+    el("line", { x1: f.x0, x2: f.x1, y1: Y(gf3), y2: Y(gf3), stroke: "var(--c-ceil)", "stroke-width": 1.5, "stroke-dasharray": "6 3" }, g);
+    txt(g, f.x0 + 6, Y(gf3) - 6, `last-stop GF ${gf3} %`, { class: "lbl" });
+  }
   const lx = f.x0 + band * (lead.n - 0.5);
   txt(g, lx, Y(lead.gf * 100) - 8, `${Math.round(lead.gf * 100)} %`, { "text-anchor": "middle", class: "lbl" });
 
@@ -1320,13 +1341,13 @@ function update() {
   try { P = ZHL.plan(buildDive()); }
   catch (e) { showMsg(e.message + " Showing the last valid plan."); return; }
   showMsg([oxygenWarnings(P), levelWarning(P)].filter(Boolean).join(" "));
-  current = { P, depth: Math.max(state.depth, ...state.extra.map(L => L[0])), gfhi: state.gfhi };
+  current = { P, depth: Math.max(state.depth, ...state.extra.map(L => L[0])), gfhi: state.gfhi, gf3: state.gf3on ? state.gf3 : null };
   renderSummary(P); renderPlan(P); renderGas(P); drawCharts();
 }
 function drawCharts() {
   if (!current) return;
   drawProfile(current.P, current.depth);
-  drawTissues(current.P, current.gfhi);
+  drawTissues(current.P, current.gfhi, current.gf3);
   drawLoading(current.P, "n2", "chart-n2", "Nitrogen");
   drawLoading(current.P, "he", "chart-he", "Helium");
 }
