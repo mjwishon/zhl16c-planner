@@ -546,7 +546,8 @@ const ZHL = (() => {
           for (const x of dilSw) if (x.depth >= d - 1e-9 && (!best || x.depth < best.depth)) best = x;
           if (best) dil = best.gas;
         }
-        const loop = { ccr: true, phase, gas: dil, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco };
+        const loop = { ccr: true, phase, gas: dil, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco,
+                       holdSP: dil !== dive.diluent };   // a diluent changed on the ascent only sets the inert mix
         if (phase !== "ascent" || !decoGases.length) return loop;
         let dg = null;                                       // CCR with OC deco gases
         for (const x of decoGases) if (x.switch_m >= d - 1e-9 && (!dg || x.FO2 > dg.FO2)) dg = x;
@@ -559,7 +560,7 @@ const ZHL = (() => {
     function inspired(b, P) {
       const g = b.gas, Pdry = Math.max(0, P - opt.PH2O);
       if (!b.ccr) return [Pdry * g.FN2, Pdry * g.FHe, P * g.FO2];
-      const pO2 = Math.min(Math.max(b.sp, g.FO2 * Pdry), Pdry);
+      const pO2 = Math.min(b.holdSP ? b.sp : Math.max(b.sp, g.FO2 * Pdry), Pdry);
       const inert = Pdry - pO2, fi = g.FN2 + g.FHe;
       if (fi <= 1e-12) return [0, 0, pO2];
       return [inert * g.FN2 / fi, inert * g.FHe / fi, pO2];
