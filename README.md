@@ -41,7 +41,7 @@ After the first visit it also works offline.
 - ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water at 10 m per bar.
 - CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.
 - END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas.
-- Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. No stops are added between levels; deco is planned from the end of the last level.
+- Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level.
 - No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no stops (can be switched off).
 - First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid. It moves one stop deeper if the ascent would already violate it (Baker's projected ascent).
 - Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF is within 1 cm of the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.

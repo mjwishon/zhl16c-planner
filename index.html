@@ -328,10 +328,10 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
       </fieldset>
 
       <div class="row"><button type="button" id="btn-reset">Reset</button></div>
-      <p class="msg" id="msg" role="status" hidden></p>
     </form>
 
     <div class="results">
+      <p class="msg" id="msg" role="status" hidden></p>
       <div class="summary" id="summary"></div>
 
       <section>
@@ -391,7 +391,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
             <li>ppO<sub>2</sub> is shown exactly and flagged above 1.6 bar, except pure oxygen at the standard 6 m stop (1.61).</li>
             <li>Gas: RMV times ambient pressure over time, in surface litres. Bottom RMV for the descent, bottom, ascent and first stop, deco RMV after. Switch depths and gas volumes use 1 bar plus 1 bar per 10.08 m.</li>
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
-            <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. No stops are added between levels; deco is planned from the end of the last level.</li>
+            <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
             <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF is within 1 cm of the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
@@ -608,11 +608,45 @@ const ZHL = (() => {
     // included); each further level's time includes the travel from the level before.
     const levels = [{ depth: dive.depth, time: dive.runtime }].concat(dive.levels || []);
     let b;
+    // Moving up to a shallower level: stop on the way whenever the GF-low ceiling would be
+    // crossed, so the diver is never above the ceiling. Stops use the stop grid and whole minutes.
+    function climbToLevel(target, b) {
+      const gLo = gf[0];
+      const okAfter = (to, rate) => {                 // ceiling after moving to `to` is at or above it
+        const T = { t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice(), rec: false };
+        travel(T, to, rate, b);
+        return ceiling(T, gLo) <= to + opt.clearTol + 1e-9;
+      };
+      if (okAfter(target, opt.ascent)) { travel(S, target, opt.ascent, b); addRow("Asc", S.d, null, b); return; }
+      let D = Math.min(S.d, Math.max(target, roundUpStop(ceiling(S, gLo))));
+      while (D < S.d - 1e-9 && !okAfter(D, opt.ascent)) D = Math.min(S.d, roundUpStop(D + 1e-3 - opt.firstStopTol));
+      if (D < S.d - 1e-9) { travel(S, D, opt.ascent, b); addRow("Asc", S.d, null, b); }
+      let first = true, tLast = S.t;
+      while (D > target + 1e-9) {
+        const N = Math.max(target, nextStop(D, false));
+        const tArr = S.t;
+        do {                                           // to the next whole minute, then 1 min at a time
+          hold(S, 60 * (Math.floor(S.t / 60 + 1e-6) + 1) - S.t, b);
+          if (S.t > opt.maxRuntime * 60) throw new Error(`Cannot clear the ${D} m stop on the way to the ${target} m level.`);
+        } while (!okAfter(N, opt.deco));
+        addRow("Stop", D, first ? S.t - tArr : S.t - tLast, b);
+        first = false;
+        rows[rows.length - 1].gf = gLo; rows[rows.length - 1].levelStop = true;
+        tLast = S.t;
+        travel(S, N, opt.deco, b);
+        D = N;
+      }
+      addRow("Asc", S.d, null, b);
+    }
+
     levels.forEach((L, i) => {
       const prev = S.d;
       b = breathing(i === 0 ? "descent" : "bottom", S.d);
-      travel(S, L.depth, L.depth >= prev ? opt.descent : opt.ascent, b);
-      if (i === 0 || Math.abs(L.depth - prev) > 1e-9) addRow(L.depth >= prev ? "Dec" : "Asc", S.d, null, b);
+      if (i > 0 && L.depth < prev - 1e-9) climbToLevel(L.depth, b);
+      else {
+        travel(S, L.depth, L.depth >= prev ? opt.descent : opt.ascent, b);
+        if (i === 0 || Math.abs(L.depth - prev) > 1e-9) addRow(L.depth >= prev ? "Dec" : "Asc", S.d, null, b);
+      }
       if (i > 0 && L.gas && !ccr) bottomGas = L.gas;          // switch to the level's gas on arrival
       b = breathing("bottom", S.d);
       let tHold = L.time * 60;
