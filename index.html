@@ -283,13 +283,13 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
           <label class="field" for="in-sp3"><span>SP deco</span><span class="in"><input id="in-sp3" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
         </div>
         <div id="o2b-wrap" class="levels">
-          <label class="check" for="in-o2b"><input id="in-o2b" type="checkbox"> Bail out to OC oxygen at the last stop</label>
+          <label class="check" for="in-o2b"><input id="in-o2b" type="checkbox"> OC oxygen for the last minutes of the last stop</label>
           <div class="row" id="o2b-row">
-            <label class="field" for="in-o2bt"><span>Time on O<sub>2</sub></span><span class="in"><input id="in-o2bt" type="number" min="1" max="120" step="1">min</span></label>
-            <label class="field" for="in-o2bw"><span>When</span><span class="in"><select id="in-o2bw">
-              <option value="last">Last minutes of the stop</option>
-              <option value="after">After the loop clears</option>
-            </select></span></label>
+            <label class="field" for="in-o2bt"><span>Last minutes on O<sub>2</sub></span><span class="in"><input id="in-o2bt" type="number" min="1" max="120" step="1">min</span></label>
+          </div>
+          <label class="check" for="in-o2a"><input id="in-o2a" type="checkbox"> OC oxygen after the loop clears</label>
+          <div class="row" id="o2a-row">
+            <label class="field" for="in-o2at"><span>Extra time on O<sub>2</sub></span><span class="in"><input id="in-o2at" type="number" min="1" max="120" step="1">min</span></label>
           </div>
         </div>
       </fieldset>
@@ -409,7 +409,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
             <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level.</li>
             <li>Last-stop GF (optional): the stops follow the GF low to GF high line, but the last stop is held until surfacing would leave every compartment at or below this GF.</li>
-            <li>CCR oxygen bailout at the last stop (optional): either the last minutes of the loop's last stop are breathed on open-circuit oxygen, or that time is added after the loop clears. The ascent from the last stop is on oxygen.</li>
+            <li>CCR oxygen at the last stop (optional, either or both): the last minutes of the loop's last stop on open-circuit oxygen, and extra time on oxygen after the loop clears. The ascent from the last stop is then on oxygen.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
             <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF is within 1 cm of the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
@@ -509,7 +509,7 @@ const ZHL = (() => {
     if (!opt.sixMetreDeep) opt.deepInc = opt.stopInc;
     const gf = dive.gf, sp = dive.sp || {};
     const gfLast = dive.gfLast != null ? dive.gfLast : null;   // optional third GF: hold the last stop until surfacing GF <= this
-    const o2b = ccr && !bailout && dive.lastStopO2 && dive.lastStopO2.minutes > 0 ? dive.lastStopO2 : null;
+    const o2b = ccr && !bailout && dive.lastStopO2 && (dive.lastStopO2.last > 0 || dive.lastStopO2.after > 0) ? dive.lastStopO2 : null;
     const O2GAS = gas(1, 0);
     let surfB = null;                                   // gas on the way up from the last stop, if not the usual
     const ocAsc = !ccr || bailout;
@@ -745,43 +745,43 @@ const ZHL = (() => {
         b = breathing("ascent", D);                 // gas switch on arrival at the stop
         const tArr = S.t;
         if (N === 0 && o2b && b.ccr) {               // CCR: OC oxygen at the last stop
-          const bO2 = { ccr: false, phase: "ascent", gas: O2GAS, sp: NaN }, sec = o2b.minutes * 60;
+          const bO2 = { ccr: false, phase: "ascent", gas: O2GAS, sp: NaN };
+          const lastSec = (o2b.last || 0) * 60, afterSec = (o2b.after || 0) * 60;
           const clear = T => ceiling(T, gN) - N <= opt.clearTol + 1e-9;
           const toMinute = (T, bb) => {
             hold(T, 60 * (Math.floor(T.t / 60 + 1e-6) + 1) - T.t, bb);
             if (T.t > opt.maxRuntime * 60) throw new Error(`Cannot clear the ${D} m stop with these settings.`);
           };
-          let tSwitch, sgSwitch;
-          if (o2b.when === "after") {                // clear on the loop, then the O2 time on top
-            do toMinute(S, b); while (!clear(S));
-            tSwitch = S.t; sgSwitch = surfGF(S);
-            hold(S, sec, bO2);
-          } else {                                   // the last minutes of the loop's stop on O2
+          const parts = [];                          // [start, end, breathing, surfacing GF at the end]
+          let t0 = tArr;
+          if (lastSec > 0) {                         // the last minutes of the loop's stop on O2
             const T = { t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice(), rec: false };
             do toMinute(T, b); while (!clear(T));
-            tSwitch = Math.max(tArr, T.t - sec);
-            hold(S, tSwitch - S.t, b); sgSwitch = surfGF(S);
+            const tSwitch = Math.max(tArr, T.t - lastSec);
+            if (tSwitch > S.t + 1e-9) { hold(S, tSwitch - S.t, b); parts.push([t0, S.t, b, surfGF(S), false]); t0 = S.t; }
             hold(S, T.t - S.t, bO2);
             while (!clear(S)) toMinute(S, bO2);
+            parts.push([t0, S.t, bO2, surfGF(S), true]); t0 = S.t;
+          } else {                                   // the loop until the stop clears
+            do toMinute(S, b); while (!clear(S));
+            parts.push([t0, S.t, b, surfGF(S), true]); t0 = S.t;
+          }
+          if (afterSec > 0) {                        // extra time on O2 after the stop has cleared
+            hold(S, afterSec, bO2);
+            parts.push([t0, S.t, bO2, surfGF(S), false]);
           }
           const prevT = isFirst ? tArr : tLastDep;
-          if (tSwitch > tArr + 1e-9) {
-            addRow("Stop", D, tSwitch - prevT, b);
-            rows[rows.length - 1].rt = tSwitch; rows[rows.length - 1].surfGf = sgSwitch;
-            if (o2b.when === "after") {               // the loop row is where the stop is cleared
-              rows[rows.length - 1].gf = gfAt(D, fs, gf);
-              if (gfLast != null) rows[rows.length - 1].gfHold = gfLast;
-            }
-          }
-          addRow("Stop", D, tSwitch > tArr + 1e-9 ? S.t - tSwitch : S.t - prevT, bO2);
-          if (o2b.when !== "after" || !(tSwitch > tArr + 1e-9)) {
-            rows[rows.length - 1].gf = gfAt(D, fs, gf);
-            if (gfLast != null) rows[rows.length - 1].gfHold = gfLast;
-          }
-          surfB = bO2;
+          parts.forEach(([a, z, bb, sg, cleared], k) => {
+            addRow("Stop", D, k === 0 ? z - prevT : z - a, bb);
+            const row = rows[rows.length - 1];
+            row.rt = z; row.surfGf = sg;
+            if (cleared) { row.gf = gfAt(D, fs, gf); if (gfLast != null) row.gfHold = gfLast; }
+          });
+          const lastB = parts[parts.length - 1][2];
+          if (!lastB.ccr) surfB = lastB;
           stops.push([D, S.t - tArr, S.t]);
           tLastDep = S.t; isFirst = false; S.stage = "deco";
-          travel(S, 0, opt.surface, bO2);
+          travel(S, 0, opt.surface, lastB);
           D = 0;
           continue;
         }
@@ -851,7 +851,7 @@ const ZHL = (() => {
 </script>
 <script>
 const DEFAULTS = {
-  mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70, gf3on: false, gf3: 70, o2b: false, o2bt: 15, o2bw: "last",
+  mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70, gf3on: false, gf3: 70, o2b: false, o2bt: 15, o2a: false, o2at: 15,
   perMode: { OC: { depth: 60, rt: 30, extra: [] }, CCR: { depth: 80, rt: 30, extra: [] }, BAIL: { depth: 80, rt: 30, extra: [] } },
   bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3, ao2: 12, ahe: 65,
   decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[35, 25, ""], [50, 0, ""], [100, 0, ""]], decoCCR: [],
@@ -912,11 +912,11 @@ function renderLevels() {
 }
 
 // ---- inputs -------------------------------------------------------------------------
-const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd", "tail", "gf3", "o2bt"];
+const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd", "tail", "gf3", "o2bt", "o2at"];
 function writeInputs() {
   Object.assign(state, state.perMode[state.mode]);   // depth and bottom time are kept per mode
   NUM.forEach(k => $("in-" + k).value = state[k]);
-  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss; $("in-gf3on").checked = state.gf3on; $("in-o2b").checked = state.o2b; $("in-o2bw").value = state.o2bw;
+  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss; $("in-gf3on").checked = state.gf3on; $("in-o2b").checked = state.o2b; $("in-o2a").checked = state.o2a;
   ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
   state.extra = state.extra || [];
   renderGasList(); renderLevels();
@@ -960,7 +960,7 @@ function readInputs() {
   const m = document.querySelector('input[name="mode"]:checked'); state.mode = m ? m.value : "OC";
   NUM.forEach(k => state[k] = Number($("in-" + k).value));
   state.perMode[state.mode] = { depth: state.depth, rt: state.rt, extra: state.extra };
-  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked; state.ss = $("in-ss").checked; state.gf3on = $("in-gf3on").checked; state.o2b = $("in-o2b").checked; state.o2bw = $("in-o2bw").value;
+  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked; state.ss = $("in-ss").checked; state.gf3on = $("in-gf3on").checked; state.o2b = $("in-o2b").checked; state.o2a = $("in-o2a").checked;
 }
 
 function validate() {
@@ -985,7 +985,7 @@ function validate() {
   if (!(s.gflo >= 10 && s.gflo <= 100 && s.gfhi >= 10 && s.gfhi <= 100)) bad.push("GF low and GF high must be 10 to 100 %.");
   else if (s.gflo > s.gfhi) bad.push("GF low must not be above GF high.");
   else if (s.gf3on && !(s.gf3 >= 10 && s.gf3 <= s.gfhi)) bad.push("Last-stop GF must be 10 % to GF high.");
-  if (s.mode === "CCR" && s.o2b && !(s.o2bt >= 1 && s.o2bt <= 120)) bad.push("Time on O2 must be 1 to 120 min.");
+  if (s.mode === "CCR" && ((s.o2b && !(s.o2bt >= 1 && s.o2bt <= 120)) || (s.o2a && !(s.o2at >= 1 && s.o2at <= 120)))) bad.push("Time on O2 must be 1 to 120 min.");
   if (s.mode === "OC") gasOk(s.bo2, s.bhe, "Bottom gas");
   else {
     gasOk(s.do2, s.dhe, "Diluent");
@@ -1004,7 +1004,7 @@ function buildDive() {
   const s = state;
   const dive = {
     depth: s.depth, runtime: s.rt, gf: [s.gflo / 100, s.gfhi / 100], gfLast: s.gf3on ? s.gf3 / 100 : null,
-    lastStopO2: s.mode === "CCR" && s.o2b ? { minutes: s.o2bt, when: s.o2bw } : null,
+    lastStopO2: s.mode === "CCR" && (s.o2b || s.o2a) ? { last: s.o2b ? s.o2bt : 0, after: s.o2a ? s.o2at : 0 } : null,
     levels: s.extra.map(([d, tm, o2, he]) => (s.mode === "OC" ? { depth: d, time: tm, gas: ZHL.gas(o2 / 100, he / 100) } : { depth: d, time: tm })),
     settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
                 lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6, noDecoCheck: s.nodeco,
@@ -1027,9 +1027,10 @@ function showGroups() {
   $("grp-bottom").hidden = m !== "OC";
   $("grp-ccr").hidden = m === "OC";
   $("grp-bail").hidden = m !== "BAIL";
-  const ocGas = m !== "CCR" || decoList().length > 0 || state.o2b;
+  const ocGas = m !== "CCR" || decoList().length > 0 || state.o2b || state.o2a;
   $("o2b-wrap").hidden = m !== "CCR";
   $("o2b-row").hidden = !state.o2b;
+  $("o2a-row").hidden = !state.o2a;
   $("grp-gasplan").hidden = !ocGas;
   $("sec-gas").hidden = !ocGas;
   $("deco-hint-ccr").hidden = m !== "CCR";
