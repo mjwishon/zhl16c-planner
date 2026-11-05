@@ -14,6 +14,7 @@ A Bühlmann ZH-L16C decompression planner with gradient factors for open circuit
 - Up to five deco or bailout gases, each with a default or custom switch depth
 - Descent rate, ascent rate to the first stop, rate between stops, and rate to the surface
 - Stop spacing, last stop depth, and 6 m spacing for stops deeper than 30 m
+- No stops while a direct ascent stays within GF high (on by default)
 
 ## What it shows
 
@@ -33,6 +34,7 @@ After the first visit it also works offline.
 
 - ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water at 10 m per bar.
 - CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.
+- No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no stops (can be switched off).
 - First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid. It moves one stop deeper if the ascent would already violate it (Baker's projected ascent).
 - Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.
 - Open circuit and bailout use the richest gas within its switch depth. On the way to the first stop the switch happens at the switch depth; after that, on arrival at a stop.

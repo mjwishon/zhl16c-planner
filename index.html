@@ -276,6 +276,7 @@ td .m { color: var(--muted); }
           <label class="field" for="in-last"><span>Last stop</span><span class="in"><select id="in-last"><option value="3">3 m</option><option value="6">6 m</option></select></span></label>
         </div>
         <label class="check" for="in-deep6"><input id="in-deep6" type="checkbox"> 6 m spacing for stops deeper than 30 m</label>
+        <label class="check" for="in-nodeco"><input id="in-nodeco" type="checkbox"> No stops while a direct ascent stays within GF high</label>
         <p class="hint">Ascent is the rate from the bottom to the first stop.</p>
       </fieldset>
 
@@ -317,6 +318,7 @@ td .m { color: var(--muted); }
           <ul>
             <li>ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
             <li>CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.</li>
+            <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no stops.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
             <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
             <li>Open circuit and bailout: the richest gas within its switch depth is used. On the way to the first stop the switch happens at the switch depth; after that, on arrival at a stop.</li>
@@ -519,6 +521,23 @@ const ZHL = (() => {
     }
     if (fs >= S.d && fs > 0) fs = Math.max(opt.lastStop, opt.stopInc * Math.floor(S.d / opt.stopInc + 1e-9));
 
+    // No-decompression check: if a direct ascent keeps every compartment within
+    // GF high on surfacing, no stops are needed (GF low only shapes real deco).
+    const directOk = T0 => {
+      const T = { t: T0.t, d: T0.d, PN2: T0.PN2.slice(), PHe: T0.PHe.slice(), rec: false };
+      if (T.d > opt.lastStop) ascend(T, opt.lastStop, opt.ascent, false, true);
+      ascend(T, 0, opt.surface, false, true);
+      return ceiling(T, gf[1]) <= 1e-9;
+    };
+    let ndl = null;                                   // no-deco time left at the end of the bottom (min)
+    if (opt.noDecoCheck !== false && directOk(S)) {
+      fs = 0;
+      const T = { t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice(), rec: false };
+      const bb = breathing("bottom", S.d);
+      ndl = 0;
+      while (ndl < 200) { hold(T, 60, bb); if (!directOk(T)) break; ndl++; }
+    }
+
     if (fs <= 0) {
       if (S.d > opt.lastStop) ascend(S, opt.lastStop, opt.ascent, true, true);
       ascend(S, 0, opt.surface, false, true);
@@ -558,7 +577,7 @@ const ZHL = (() => {
       const M = Ps / bb + a;
       return { n: i + 1, htN2: HTN2[i], htHe: HTHE[i], PN2: pn, PHe: ph, Pt: pt, M, gf: (pt - Ps) / (M - Ps) };
     });
-    return { rows, stops, firstStop: fs, tAscent, tSurface: S.t,
+    return { rows, stops, firstStop: fs, ndl, tAscent, tSurface: S.t,
              lastDepart: stops.length ? stops[stops.length - 1][2] : S.t,
              trace: trace.map((p, i) => [p.t, p.d, ceil[i]]), tissues };
   }
@@ -572,7 +591,7 @@ const DEFAULTS = {
   mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70,
   bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.3, sp3: 1.3, ao2: 12, ahe: 65,
   decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[25, 35, ""], [50, 0, ""], [100, 0, ""]],
-  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true,
+  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true,
 };
 const NS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
@@ -602,7 +621,7 @@ function showMsg(s) { const m = $("msg"); m.textContent = s; m.hidden = !s; }
 const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4"];
 function writeInputs() {
   NUM.forEach(k => $("in-" + k).value = state[k]);
-  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6;
+  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco;
   ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
   renderGasList();
 }
@@ -643,7 +662,7 @@ function gasName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).la
 
 function readInputs() {
   NUM.forEach(k => state[k] = Number($("in-" + k).value));
-  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked;
+  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked;
   const m = document.querySelector('input[name="mode"]:checked'); state.mode = m ? m.value : "OC";
 }
 
@@ -677,7 +696,7 @@ function buildDive() {
   const dive = {
     depth: s.depth, runtime: s.rt, gf: [s.gflo / 100, s.gfhi / 100],
     settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
-                lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6 },
+                lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6, noDecoCheck: s.nodeco },
   };
   const deco = () => decoList().map(g => ZHL.gas(g[0] / 100, g[1] / 100,
     g[2] === "" ? { deco: true } : { deco: true, switch_m: Number(g[2]) }));
@@ -707,7 +726,9 @@ function renderSummary(P) {
   const items = [
     ["Runtime", Math.round(P.tSurface / 60), "min", "at the surface"],
     ["Deco", Math.round((P.tSurface - P.tAscent) / 60), "min", "ascent and stops"],
-    ["First stop", P.firstStop > 0 ? P.firstStop : "none", P.firstStop > 0 ? "m" : "", P.firstStop > 0 ? `${P.stops.length} stops` : "no stops needed"],
+    ["First stop", P.firstStop > 0 ? P.firstStop : "none", P.firstStop > 0 ? "m" : "",
+      P.firstStop > 0 ? `${P.stops.length} stops`
+        : P.ndl != null ? `no-deco time left ${P.ndl >= 200 ? "over 200" : P.ndl} min` : "no stops needed"],
     ["Leading compartment", "#" + lead.n, "", `GF ${Math.round(lead.gf * 100)} % on surfacing`],
   ];
   items.forEach(([k, v, u, s]) => {
