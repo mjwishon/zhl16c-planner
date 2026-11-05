@@ -511,6 +511,7 @@ const ZHL = (() => {
     const gfLast = dive.gfLast != null ? dive.gfLast : null;   // optional third GF: hold the last stop until surfacing GF <= this
     const o2b = ccr && !bailout && dive.lastStopO2 && dive.lastStopO2.minutes > 0 ? dive.lastStopO2 : null;
     const O2GAS = gas(1, 0);
+    let surfB = null;                                   // gas on the way up from the last stop, if not the usual
     const ocAsc = !ccr || bailout;
     const pamb = d => opt.Psurf + d / opt.mPerBar;
     const pn0 = (opt.Psurf - opt.PH2O) * opt.FN2air;
@@ -766,11 +767,17 @@ const ZHL = (() => {
           if (tSwitch > tArr + 1e-9) {
             addRow("Stop", D, tSwitch - prevT, b);
             rows[rows.length - 1].rt = tSwitch; rows[rows.length - 1].surfGf = sgSwitch;
-            rows[rows.length - 1].gf = gfAt(D, fs, gf);
+            if (o2b.when === "after") {               // the loop row is where the stop is cleared
+              rows[rows.length - 1].gf = gfAt(D, fs, gf);
+              if (gfLast != null) rows[rows.length - 1].gfHold = gfLast;
+            }
           }
           addRow("Stop", D, tSwitch > tArr + 1e-9 ? S.t - tSwitch : S.t - prevT, bO2);
-          rows[rows.length - 1].gf = gfAt(D, fs, gf);
-          if (gfLast != null) rows[rows.length - 1].gfHold = gfLast;
+          if (o2b.when !== "after" || !(tSwitch > tArr + 1e-9)) {
+            rows[rows.length - 1].gf = gfAt(D, fs, gf);
+            if (gfLast != null) rows[rows.length - 1].gfHold = gfLast;
+          }
+          surfB = bO2;
           stops.push([D, S.t - tArr, S.t]);
           tLastDep = S.t; isFirst = false; S.stage = "deco";
           travel(S, 0, opt.surface, bO2);
@@ -791,7 +798,7 @@ const ZHL = (() => {
         D = N;
       }
     }
-    addRow("Surface", 0, null, breathing("ascent", 0));
+    addRow("Surface", 0, null, surfB || breathing("ascent", 0));
 
     // ceiling (GF in control) along the trace
     const ceil = trace.map(p => {
@@ -1078,7 +1085,7 @@ function renderPlan(P) {
       ...(showSP ? [r.ccr && !surf ? r.sp.toFixed(2) : ""] : []),
       showPO2 ? r.po2.toFixed(2) : "",
       surf ? "" : Math.round(r.end) + " m",
-      r.kind === "Stop" ? Math.round(r.gf * 100) + " %" + (r.gfHold != null ? ` \u2192 ${Math.round(r.gfHold * 100)} %` : "") : "",
+      r.kind === "Stop" && r.gf != null ? Math.round(r.gf * 100) + " %" + (r.gfHold != null ? ` \u2192 ${Math.round(r.gfHold * 100)} %` : "") : "",
       (r.kind === "Stop" || r.kind === "Level" || r.kind === "Safety") ? Math.round(r.surfGf * 100) + " %" : "",
     ];
     const po2Col = showSP ? 6 : 5;
