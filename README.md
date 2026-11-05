@@ -24,6 +24,7 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 - Gas needed per open-circuit gas, in surface litres
 - The profile with the decompression ceiling
 - A bar chart of all 16 compartments on surfacing, showing how close each is to its M-value and which one leads
+- Nitrogen and helium pressure in each compartment over the dive and after surfacing (line graphs; time after surfacing is adjustable, default 2 hours)
 
 ## Install on a phone or desktop
 
@@ -50,7 +51,6 @@ After the first visit it also works offline.
 3. E. C. Baker, *Clearing Up the Confusion About "Deep Stops"*, 1998.
 4. E. C. Baker, public-domain decompression programs in Fortran.
 5. H. R. Schreiner and P. L. Kelley, "A pragmatic view of decompression", *Underwater Physiology IV*, 1971.
-6. [libbuhlmann](https://github.com/AquaBSD/libbuhlmann), open-source ZH-L16 and gradient factor library.
 
 ## Files
 

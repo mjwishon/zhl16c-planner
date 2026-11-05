@@ -38,6 +38,8 @@ img { max-width: 100%; }
   --c-ceil: #eb6834;
   --c-bar: #86b6ef;
   --c-lead: #1c5cab;
+  --c-fast: #86b6ef;
+  --c-slow: #0d366b;
   --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
 }
@@ -46,6 +48,7 @@ img { max-width: 100%; }
     --bg: #0f1012; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #8f9196;
     --grid: #2c2c2a; --axis: #3d3e40; --ring: rgba(255, 255, 255, 0.12); --accent: #3987e5;
     --warn-line: #fab219; --c-depth: #3987e5; --c-ceil: #d95926; --c-bar: #256abf; --c-lead: #9ec5f4;
+    --c-fast: #184f95; --c-slow: #cde2fb;
     color-scheme: dark;
   }
 }
@@ -53,6 +56,7 @@ img { max-width: 100%; }
   --bg: #0f1012; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #8f9196;
   --grid: #2c2c2a; --axis: #3d3e40; --ring: rgba(255, 255, 255, 0.12); --accent: #3987e5;
   --warn-line: #fab219; --c-depth: #3987e5; --c-ceil: #d95926; --c-bar: #256abf; --c-lead: #9ec5f4;
+  --c-fast: #184f95; --c-slow: #cde2fb;
   color-scheme: dark;
 }
 
@@ -167,11 +171,20 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
   background: var(--surface); color: var(--ink); border: 1px solid var(--ring); border-radius: 6px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); padding: 8px 10px; font: 12.5px/1.5 var(--font-mono);
 }
+.tip.wide { display: grid; grid-template-columns: repeat(2, auto); column-gap: 14px; min-width: 0; }
+.tip.wide .t-head { grid-column: 1 / -1; }
 .tip .t-head { color: var(--muted); margin-bottom: 3px; }
 .tip .r { display: flex; align-items: center; gap: 8px; }
 .tip .r strong { font-weight: 500; min-width: 4.4em; }
 .tip .r span { color: var(--ink-2); }
 
+.loadbox { background: var(--surface); border-radius: 8px; padding: 14px 8px 8px; display: grid; gap: 6px; }
+.loadbox h3 { margin: 6px 8px 0; font-size: 14px; font-weight: 600; }
+.loadbox .chart { background: none; padding: 4px 0 0; }
+.ramp { display: flex; align-items: center; gap: 8px; margin: 0 8px; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
+.ramp .tail { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.ramp .tail input { width: 4.4em; }
+.ramp i { width: 120px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--c-fast), var(--c-slow)); }
 .notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .notes > div { display: grid; gap: 8px; align-content: start; min-width: 0; }
 .notes h3 { margin: 0; font-size: 14px; font-weight: 600; }
@@ -342,6 +355,21 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
         <div class="chart" id="chart-tis"><div class="tip" hidden></div></div>
       </section>
 
+      <section>
+        <div class="sec-head">
+          <h2>Compartment loading</h2>
+          <p>Inert gas pressure in each of the 16 compartments over the dive and after surfacing, breathing air at the surface. The thicker line is the compartment that leads on surfacing.</p>
+        </div>
+        <div class="loadbox">
+          <div class="ramp"><span>1 fast</span><i aria-hidden="true"></i><span>16 slow</span><span id="lead-key"></span>
+            <label class="tail" for="in-tail">After surfacing <input id="in-tail" type="number" min="0" max="1440" step="10"> min</label></div>
+          <h3>Nitrogen, bar</h3>
+          <div class="chart" id="chart-n2"><div class="tip" hidden></div></div>
+          <h3>Helium, bar</h3>
+          <div class="chart" id="chart-he"><div class="tip" hidden></div></div>
+        </div>
+      </section>
+
       <section class="notes">
         <div>
           <h3>How the plan is made</h3>
@@ -365,7 +393,6 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
             <li>E. C. Baker, <i>Clearing Up the Confusion About "Deep Stops"</i>, 1998.</li>
             <li>E. C. Baker, public-domain decompression programs in Fortran (stop scheduling, projected ascent).</li>
             <li>H. R. Schreiner and P. L. Kelley, "A pragmatic view of decompression", <i>Underwater Physiology IV</i>, 1971.</li>
-            <li><a href="https://github.com/AquaBSD/libbuhlmann" target="_blank" rel="noopener">libbuhlmann</a>, open-source ZH-L16 and gradient factor library.</li>
           </ol>
         </div>
       </section>
@@ -393,6 +420,7 @@ const ZHL = (() => {
     mPerBar: 10, Psurf: 1.01325, PH2O: 0.0530, FN2air: 0.79,
     firstStopTol: 0.05, dtTravel: 1, dtHold: 10, maxRuntime: 2000,
     safetyStop: false, safetyDepth: 5, safetyTime: 3,
+    surfaceTail: 0,                                    // minutes of surface off-gassing to show (air)
     rmvBottom: 15, rmvDeco: 12,                        // L/min at the surface, open circuit
     gasPsurf: 1.0, gasMPerBar: 10.08, rmvRule: "throughFirstStop", // gas volume and switch-depth convention (fitted)
   };
@@ -650,6 +678,23 @@ const ZHL = (() => {
     return { rows, stops, firstStop: fs, ndl, tAscent, tSurface: S.t,
              lastDepart: stops.length ? stops[stops.length - 1][2] : S.t,
              trace: trace.map((p, i) => [p.t, p.d, ceil[i]]), tissues,
+             loading: (() => {                              // compartment pressures over time (about 600 points)
+               const step = Math.max(1, Math.floor(trace.length / 600)), pts = [];
+               for (let i = 0; i < trace.length; i += step) pts.push(trace[i]);
+               if (pts[pts.length - 1] !== trace[trace.length - 1]) pts.push(trace[trace.length - 1]);
+               // after surfacing: off-gassing on surface air, one point per minute (display only)
+               const tailMin = Math.max(0, Math.round(opt.surfaceTail || 0));
+               if (tailMin > 0) {
+                 const iN = (opt.Psurf - opt.PH2O) * opt.FN2air;
+                 const eN = KN2.map(k => Math.exp(-k * 60)), eH = KHE.map(k => Math.exp(-k * 60));
+                 const PN2 = S.PN2.slice(), PHe = S.PHe.slice();
+                 for (let i = 1; i <= tailMin; i++) {
+                   for (let c = 0; c < 16; c++) { PN2[c] = iN + (PN2[c] - iN) * eN[c]; PHe[c] *= eH[c]; }
+                   pts.push({ t: S.t + 60 * i, PN2: PN2.slice(), PHe: PHe.slice() });
+                 }
+               }
+               return { t: pts.map(p => p.t), n2: pts.map(p => p.PN2), he: pts.map(p => p.PHe), tSurface: S.t };
+             })(),
              gasUse: [...gasUse.values()].map(u => ({ gas: u.gas, litres: u.litres, minutes: u.seconds / 60 })) };
   }
 
@@ -663,7 +708,7 @@ const DEFAULTS = {
   perMode: { OC: { depth: 60, rt: 30 }, CCR: { depth: 80, rt: 30 }, BAIL: { depth: 80, rt: 30 } },
   bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3, ao2: 12, ahe: 65,
   decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[35, 25, ""], [50, 0, ""], [100, 0, ""]],
-  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12,
+  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12, tail: 120,
 };
 const NS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
@@ -690,7 +735,7 @@ function lineKey(color, dash) {
 function showMsg(s) { const m = $("msg"); m.textContent = s; m.hidden = !s; }
 
 // ---- inputs -------------------------------------------------------------------------
-const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd"];
+const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd", "tail"];
 function writeInputs() {
   Object.assign(state, state.perMode[state.mode]);   // depth and bottom time are kept per mode
   NUM.forEach(k => $("in-" + k).value = state[k]);
@@ -750,6 +795,7 @@ function validate() {
   if (!(s.r1 > 0 && s.r2 > 0 && s.r3 > 0 && s.r4 > 0)) bad.push("Rates must be above 0 m/min.");
   else if (!(s.rt >= s.depth / s.r1)) bad.push(`Bottom time must be at least the descent time (${(s.depth / s.r1).toFixed(1)} min).`);
   if (!(s.rt <= 300)) bad.push("Bottom time must be 300 min or less.");
+  if (!(s.tail >= 0 && s.tail <= 1440)) bad.push("Time after surfacing must be 0 to 1440 min.");
   if (s.ss && !(s.ssd >= 2 && s.ssd <= 15 && s.ssm >= 1 && s.ssm <= 15)) bad.push("Safety stop must be 2 to 15 m and 1 to 15 min.");
   if (!(s.gflo >= 10 && s.gflo <= 100 && s.gfhi >= 10 && s.gfhi <= 100)) bad.push("GF low and GF high must be 10 to 100 %.");
   else if (s.gflo > s.gfhi) bad.push("GF low must not be above GF high.");
@@ -773,7 +819,7 @@ function buildDive() {
     depth: s.depth, runtime: s.rt, gf: [s.gflo / 100, s.gfhi / 100],
     settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
                 lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6, noDecoCheck: s.nodeco,
-                safetyStop: s.ss, safetyDepth: s.ssd, safetyTime: s.ssm, rmvBottom: s.rmvb, rmvDeco: s.rmvd },
+                safetyStop: s.ss, safetyDepth: s.ssd, safetyTime: s.ssm, rmvBottom: s.rmvb, rmvDeco: s.rmvd, surfaceTail: s.tail },
   };
   const deco = () => decoList().map(g => ZHL.gas(g[0] / 100, g[1] / 100,
     g[2] === "" ? { deco: true } : { deco: true, switch_m: Number(g[2]) }));
@@ -887,6 +933,7 @@ function showTip(chart, head, rows, px, py) {
     r.append(h("strong", null, v), h("span", null, l));
     tip.appendChild(r);
   });
+  tip.classList.remove("wide");
   tip.hidden = false;
   const cw = chart.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
   let x = px + 14; if (x + tw > cw - 4) x = px - tw - 14; if (x < 4) x = 4;
@@ -1018,6 +1065,73 @@ function oxygenWarnings(P) {
   return out.join(" ");
 }
 
+// ---- compartment loading (line graphs) ----------------------------------------------------
+function hexToRgb(h) { h = h.trim().replace("#", ""); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function rampColor(i) {   // compartment 1 (fast) -> 16 (slow)
+  const cs = getComputedStyle(document.documentElement);
+  const a = hexToRgb(cs.getPropertyValue("--c-fast")), b = hexToRgb(cs.getPropertyValue("--c-slow"));
+  const f = i / 15;
+  return "rgb(" + a.map((v, k) => Math.round(v + (b[k] - v) * f)).join(",") + ")";
+}
+function drawLoading(P, key, chartId, gasName) {
+  const chart = $(chartId), L = P.loading, series = L[key];
+  const maxV = Math.max(...series.map(arr => Math.max(...arr)));
+  if (!(maxV > 0.01)) {
+    chart.querySelectorAll("svg, .empty").forEach(n => n.remove()); hideTip(chart);
+    const d = document.createElement("div"); d.className = "empty"; d.textContent = `No ${gasName.toLowerCase()} on this dive.`;
+    chart.prepend(d); return;
+  }
+  chart.querySelectorAll(".empty").forEach(n => n.remove());
+  const narrow = chart.clientWidth < 560;
+  const f = frame(chart, narrow ? 220 : 250, { l: 46, r: narrow ? 12 : 20, t: 10, b: 38 });
+  const tEnd = L.t[L.t.length - 1] / 60, xs = niceStep(tEnd, narrow ? 5 : 8), xEnd = tEnd * 1.01;
+  const yTop = Math.ceil(maxV * 2 + 0.2) / 2, ys = yTop > 4 ? 1 : 0.5;
+  const X = scale(0, xEnd, f.x0, f.x1), Y = scale(0, yTop, f.y1, f.y0);
+  const g = el("g", {}, f.svg);
+  for (let tt = 0; tt <= xEnd + 1e-9; tt += xs) {
+    el("line", { x1: X(tt), x2: X(tt), y1: f.y0, y2: f.y1, stroke: "var(--grid)", "stroke-width": 1 }, g);
+    txt(g, X(tt), f.y1 + 17, tt, { "text-anchor": "middle" });
+  }
+  txt(g, (f.x0 + f.x1) / 2, f.y1 + 33, "runtime (min)", { "text-anchor": "middle" });
+  for (let v = 0; v <= yTop + 1e-9; v += ys) {
+    el("line", { x1: f.x0, x2: f.x1, y1: Y(v), y2: Y(v), stroke: v === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }, g);
+    txt(g, f.x0 - 8, Y(v) + 4, v.toFixed(1), { "text-anchor": "end" });
+  }
+  const tS = L.tSurface / 60;
+  if (tS < tEnd - 1e-6) {
+    el("line", { x1: X(tS), x2: X(tS), y1: f.y0, y2: f.y1, stroke: "var(--ink-2)", "stroke-width": 1, "stroke-dasharray": "4 4" }, g);
+    txt(g, X(tS) + 6, f.y0 + 12, "surface", { class: "lbl" });
+  }
+  const lead = P.tissues.reduce((a, b) => (b.gf > a.gf ? b : a)).n - 1;
+  const order = [...Array(16).keys()].filter(i => i !== lead).concat([lead]);   // leading line on top
+  order.forEach(i => {
+    const p = el("polyline", { points: L.t.map((tt, k) => X(tt / 60) + "," + Y(series[k][i])).join(" "), fill: "none",
+      "stroke-width": i === lead ? 3 : 1.5, "stroke-linejoin": "round", "stroke-linecap": "round" }, g);
+    p.style.stroke = rampColor(i);
+  });
+  const cross = el("line", { y1: f.y0, y2: f.y1, stroke: "var(--ink-2)", "stroke-width": 1, visibility: "hidden" }, g);
+  const hit = el("rect", { x: f.x0, y: f.y0, width: f.x1 - f.x0, height: f.y1 - f.y0, fill: "transparent" }, f.svg);
+  hit.addEventListener("pointermove", ev => {
+    const r = f.svg.getBoundingClientRect();
+    const tt = Math.max(0, Math.min(tEnd, (ev.clientX - r.left - f.x0) / (f.x1 - f.x0) * xEnd)) * 60;
+    let lo = 0, hi = L.t.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (L.t[m] < tt) lo = m; else hi = m; }
+    const k = Math.abs(L.t[lo] - tt) < Math.abs(L.t[hi] - tt) ? lo : hi;
+    cross.setAttribute("x1", X(L.t[k] / 60)); cross.setAttribute("x2", X(L.t[k] / 60)); cross.setAttribute("visibility", "visible");
+    const rows = [...Array(16).keys()].map(i => {
+      const key = el("svg", { class: "key", viewBox: "0 0 22 10", "aria-hidden": "true" });
+      const ln = el("line", { x1: 1, y1: 5, x2: 21, y2: 5, "stroke-width": i === lead ? 3.5 : 2.5, "stroke-linecap": "round" }, key);
+      ln.style.stroke = rampColor(i);
+      return [series[k][i].toFixed(2), "#" + (i + 1) + (i === lead ? " lead" : ""), key];
+    });
+    showTip(chart, `${gasName} · runtime ${mmss(L.t[k])}`, rows, X(L.t[k] / 60), ev.clientY - chart.getBoundingClientRect().top);
+    chart.querySelector(".tip").classList.add("wide");
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTip(chart); });
+  f.svg.setAttribute("role", "img");
+  f.svg.setAttribute("aria-label", `${gasName} pressure in the 16 compartments over the dive, up to ${maxV.toFixed(2)} bar.`);
+}
+
 // ---- update -----------------------------------------------------------------------------
 let current = null;
 function update() {
@@ -1035,6 +1149,10 @@ function drawCharts() {
   if (!current) return;
   drawProfile(current.P, current.depth);
   drawTissues(current.P, current.gfhi);
+  drawLoading(current.P, "n2", "chart-n2", "Nitrogen");
+  drawLoading(current.P, "he", "chart-he", "Helium");
+  const lead = current.P.tissues.reduce((a, b) => (b.gf > a.gf ? b : a));
+  $("lead-key").textContent = `· thick line: #${lead.n}, leading on surfacing`;
 }
 (function legend() {
   const box = $("legend-prof");
@@ -1070,6 +1188,8 @@ $("btn-add").addEventListener("click", () => { decoList().push([32, 0, ""]); ren
 $("btn-reset").addEventListener("click", () => { state = JSON.parse(JSON.stringify(DEFAULTS)); writeInputs(); update(); });
 writeInputs();
 update();
+$("in-tail").addEventListener("input", () => { clearTimeout(deb); deb = setTimeout(update, 150); });
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => drawCharts()); } catch (e) {}
 let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(drawCharts, 60); }).observe(document.querySelector(".results"));
 </script>
 
