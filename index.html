@@ -604,7 +604,8 @@ const ZHL = (() => {
 <script>
 const DEFAULTS = {
   mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70,
-  bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.3, sp3: 1.3, ao2: 12, ahe: 65,
+  perMode: { OC: { depth: 60, rt: 30 }, CCR: { depth: 80, rt: 30 }, BAIL: { depth: 80, rt: 30 } },
+  bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3, ao2: 12, ahe: 65,
   decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[25, 35, ""], [50, 0, ""], [100, 0, ""]],
   r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3,
 };
@@ -635,6 +636,7 @@ function showMsg(s) { const m = $("msg"); m.textContent = s; m.hidden = !s; }
 // ---- inputs -------------------------------------------------------------------------
 const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm"];
 function writeInputs() {
+  Object.assign(state, state.perMode[state.mode]);   // depth and bottom time are kept per mode
   NUM.forEach(k => $("in-" + k).value = state[k]);
   $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss;
   ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
@@ -676,9 +678,10 @@ function autoSwitch(o2, he) {
 function gasName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).label : ""; }
 
 function readInputs() {
-  NUM.forEach(k => state[k] = Number($("in-" + k).value));
-  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked; state.ss = $("in-ss").checked;
   const m = document.querySelector('input[name="mode"]:checked'); state.mode = m ? m.value : "OC";
+  NUM.forEach(k => state[k] = Number($("in-" + k).value));
+  state.perMode[state.mode] = { depth: state.depth, rt: state.rt };
+  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked; state.ss = $("in-ss").checked;
 }
 
 function validate() {
@@ -946,7 +949,13 @@ $("controls").addEventListener("input", ev => {
       row.querySelector(`[data-key="2"]`).placeholder = auto != null ? String(auto) : "";
     }
   }
-  if (t.name === "mode") { readInputs(); renderGasList(); }
+  if (t.name === "mode") {
+    // keep the old mode's depth and bottom time, then load the new mode's
+    state.perMode[state.mode] = { depth: Number($("in-depth").value), rt: Number($("in-rt").value) };
+    state.mode = t.value;
+    $("in-depth").value = state.perMode[state.mode].depth; $("in-rt").value = state.perMode[state.mode].rt;
+    renderGasList();
+  }
   clearTimeout(deb); deb = setTimeout(update, 120);
 });
 $("controls").addEventListener("submit", e => e.preventDefault());
