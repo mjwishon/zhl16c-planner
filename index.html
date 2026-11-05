@@ -149,6 +149,7 @@ thead th { font: 500 12.5px var(--font-sans); color: var(--ink-2); }
 tr.stop td:first-child { font-weight: 500; }
 tr.minor td { color: var(--muted); }
 td .m { color: var(--muted); }
+td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(--warn-line) 16%, transparent); }
 
 .chart { position: relative; background: var(--surface); border-radius: 8px; padding: 12px 8px 6px; min-width: 0; }
 .chart svg { display: block; width: 100%; overflow: visible; }
@@ -477,7 +478,9 @@ const ZHL = (() => {
       T.t = t0 + dur;
     }
     function addRow(kind, depth, dur, b) {
-      rows.push({ kind, depth, dur, rt: S.t, gas: b.gas, ccr: b.ccr, o2: b.ccr ? b.sp : pamb(depth) * b.gas.FO2 });
+      // po2: inspired ppO2 (CCR: what the loop can actually hold at this depth)
+      rows.push({ kind, depth, dur, rt: S.t, gas: b.gas, ccr: b.ccr, sp: b.ccr ? b.sp : null,
+                  po2: inspired(b, pamb(depth))[2], o2: b.ccr ? b.sp : pamb(depth) * b.gas.FO2 });
     }
     // Move up to dTo; OC splits the move at gas switch depths, and the move to the
     // first stop is also split at the 30 m waypoint (adds "Asc to" rows).
@@ -766,7 +769,8 @@ function renderSummary(P) {
 function renderPlan(P) {
   const tb = $("plan"); tb.replaceChildren();
   const hr = tb.createTHead().insertRow();
-  ["", "Depth", "Time", "Runtime", "Gas", "ppO₂ / SP", "GF"].forEach((t, i) => {
+  const showSP = P.rows.some(r => r.ccr);
+  ["", "Depth", "Time", "Runtime", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "GF"].forEach((t, i) => {
     const th = document.createElement("th"); th.textContent = t; if (i === 4) th.className = "l"; hr.appendChild(th);
   });
   const body = tb.createTBody();
@@ -774,16 +778,24 @@ function renderPlan(P) {
   P.rows.forEach(r => {
     const tr = body.insertRow();
     tr.className = (r.kind === "Stop" || r.kind === "Safety") ? "stop" : (r.kind === "Asc" || r.kind === "Dec") ? "minor" : "";
+    const surf = r.kind === "Surface";
+    const showPO2 = !surf && (r.ccr || r.kind === "Level" || r.kind === "Stop" || r.kind === "Safety");
     const cells = [
       WHAT[r.kind],
-      r.kind === "Surface" ? "" : r.depth + " m",
+      surf ? "" : r.depth + " m",
       r.dur == null ? "" : mmss(r.dur),
       String(Math.floor(r.rt / 60 + 1e-9)),
       r.ccr ? "Diluent " + r.gas.name : r.gas.label,
-      r.kind === "Surface" ? "" : r.ccr ? r.o2.toFixed(2) + " SP" : (r.kind === "Level" || r.kind === "Stop" || r.kind === "Safety") ? r.o2.toFixed(2) : "",
+      ...(showSP ? [r.ccr && !surf ? r.sp.toFixed(2) : ""] : []),
+      showPO2 ? r.po2.toFixed(2) : "",
       r.kind === "Stop" ? Math.round(r.gf * 100) + " %" : "",
     ];
-    cells.forEach((c, i) => { const td = tr.insertCell(); td.textContent = c; if (i === 4) td.className = "l"; });
+    const po2Col = showSP ? 6 : 5;
+    cells.forEach((c, i) => {
+      const td = tr.insertCell(); td.textContent = c;
+      if (i === 4) td.className = "l";
+      if (i === po2Col && showPO2 && (r.po2 > 1.6 + 1e-9 || r.po2 < 0.16)) td.className = "hi";
+    });
   });
 }
 
@@ -912,6 +924,22 @@ function drawTissues(P, gfhi) {
   $("tissue-caption").textContent = `How close each compartment is to its M-value when you reach the surface, as a gradient factor. Compartment ${lead.n} (half-time N₂ ${lead.htN2} min, He ${lead.htHe} min) leads at ${Math.round(lead.gf * 100)} %.`;
 }
 
+// ---- oxygen warnings -----------------------------------------------------------------------
+function oxygenWarnings(P) {
+  const out = [];
+  const live = P.rows.filter(r => r.kind !== "Surface");
+  const hi = live.reduce((a, r) => (r.po2 > a.po2 ? r : a), live[0]);
+  if (hi && hi.po2 > 1.6 + 1e-9) {
+    out.push(hi.ccr && hi.po2 > hi.sp + 0.005
+      ? `ppO₂ reaches ${hi.po2.toFixed(2)} bar at ${hi.depth} m: the diluent alone is above the ${hi.sp.toFixed(2)} setpoint, so the loop cannot hold it.`
+      : `ppO₂ reaches ${hi.po2.toFixed(2)} bar at ${hi.depth} m, above 1.6 bar.`);
+  }
+  if (state.mode === "OC" && state.bo2 / 100 * ZHL.DEFAULTS.Psurf < 0.16) {
+    out.push(`The bottom gas is hypoxic at the surface (ppO₂ ${(state.bo2 / 100 * ZHL.DEFAULTS.Psurf).toFixed(2)} bar) and needs a travel gas, which this planner does not model.`);
+  }
+  return out.join(" ");
+}
+
 // ---- update -----------------------------------------------------------------------------
 let current = null;
 function update() {
@@ -921,7 +949,7 @@ function update() {
   let P;
   try { P = ZHL.plan(buildDive()); }
   catch (e) { showMsg(e.message + " Showing the last valid plan."); return; }
-  showMsg("");
+  showMsg(oxygenWarnings(P));
   current = { P, depth: state.depth, gfhi: state.gfhi };
   renderSummary(P); renderPlan(P); drawCharts();
 }
