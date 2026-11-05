@@ -382,12 +382,14 @@ const ZHL = (() => {
     }
     if (sw != null) g.switch_m = sw;
     const o2 = Math.round(FO2 * 100), he = Math.round(FHe * 100);
+    const p2 = n => String(n).padStart(2, "0");
+    g.mix = p2(o2) + "/" + p2(he);                    // always XX/XX, used for diluents
     if (he > 0) {
-      g.name = o2 + "/" + he;
+      g.name = g.mix;
       g.label = (g.FN2 < 1e-9 ? "Heliox " : o2 > 21 ? "Triox " : "Trimix ") + g.name;
     } else if (o2 >= 100) { g.name = "O2"; g.label = "Oxygen"; }
     else if (o2 === 21) { g.name = "Air"; g.label = "Air"; }
-    else if (o2 < 21) { g.name = o2 + "/00"; g.label = g.name; }   // hypoxic, no helium
+    else if (o2 < 21) { g.name = g.mix; g.label = g.name; }        // hypoxic, no helium
     else { g.name = "EAN" + o2; g.label = "Nitrox " + o2; }
     return g;
   }
@@ -785,7 +787,7 @@ function renderPlan(P) {
       surf ? "" : r.depth + " m",
       r.dur == null ? "" : mmss(r.dur),
       String(Math.floor(r.rt / 60 + 1e-9)),
-      r.ccr ? "Diluent " + r.gas.name : r.gas.label,
+      r.ccr ? "Diluent " + r.gas.mix : r.gas.label,
       ...(showSP ? [r.ccr && !surf ? r.sp.toFixed(2) : ""] : []),
       showPO2 ? r.po2.toFixed(2) : "",
       r.kind === "Stop" ? Math.round(r.gf * 100) + " %" : "",
