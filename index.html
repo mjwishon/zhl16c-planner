@@ -1000,7 +1000,7 @@ $("controls").addEventListener("input", ev => {
   clearTimeout(deb); deb = setTimeout(update, 120);
 });
 $("controls").addEventListener("submit", e => e.preventDefault());
-$("btn-add").addEventListener("click", () => { decoList().push([32, 0, ""]); renderGasList(); update(); });
+$("btn-add").addEventListener("click", () => { decoList().push([35, 25, ""]); renderGasList(); update(); });
 $("btn-reset").addEventListener("click", () => { state = JSON.parse(JSON.stringify(DEFAULTS)); writeInputs(); update(); });
 writeInputs();
 update();
