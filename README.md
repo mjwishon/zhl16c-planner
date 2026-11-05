@@ -1,10 +1,10 @@
 # ZH-L16C Planner
 
-> Every dive plan carries risk. This planner is provided as is, without any warranty that it applies the Bühlmann ZH-L16C model and gradient factors correctly or that its schedules will keep you free of decompression sickness. You use it at your own risk. Diving is inherently dangerous, decompression diving adds to that risk, and deep dives on several gases including helium add the most. Check every plan against other tools, follow your training and stay within your limits.
+> **For education only. Not for planning or conducting real dives.** This planner is provided as is, without any warranty that it applies the Bühlmann ZH-L16C model and gradient factors correctly or that its schedules would prevent decompression sickness. Do not use its output to plan or execute any dive. Diving is inherently dangerous, decompression diving adds to that risk, and deep dives on several gases including helium add the most. Plan real dives with tested, established tools and the training to use them.
 
 **App:** https://mjwishon.github.io/zhl16c-planner/
 
-A Bühlmann ZH-L16C decompression planner with gradient factors for open circuit, CCR, and CCR with open-circuit bailout. It runs entirely in the browser, and nothing is sent anywhere.
+An educational Bühlmann ZH-L16C decompression planner with gradient factors for open circuit, CCR, and CCR with open-circuit bailout. It runs entirely in the browser, and nothing is sent anywhere.
 
 ## What you can set
 

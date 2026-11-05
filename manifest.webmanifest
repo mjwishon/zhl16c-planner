@@ -1,15 +1,30 @@
 {
   "name": "ZH-L16C Planner",
   "short_name": "ZH-L16C",
-  "description": "ZH-L16C decompression planner with gradient factors for OC, CCR and CCR with OC bailout.",
+  "description": "Educational ZH-L16C decompression planner with gradient factors for OC, CCR and CCR with OC bailout. Not for planning real dives.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0f1012",
   "theme_color": "#0f1012",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

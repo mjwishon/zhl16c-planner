@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ZH-L16C Planner</title>
-<meta name="description" content="Bühlmann ZH-L16C decompression planner with gradient factors for open circuit, CCR and CCR with open-circuit bailout.">
+<meta name="description" content="Educational Bühlmann ZH-L16C decompression planner with gradient factors for open circuit, CCR and CCR with open-circuit bailout. Not for planning real dives.">
 <meta name="theme-color" content="#f6f7f8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1012" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
@@ -74,6 +74,7 @@ p { margin: 0; max-width: 68ch; }
 .w-head { display: flex; align-items: center; gap: 10px; }
 .warning svg { width: 24px; height: 24px; flex: none; }
 .warning strong { font-size: 19px; line-height: 1.25; font-weight: 600; }
+.warning p strong { font-size: inherit; font-weight: 600; color: var(--ink); }
 .warning p { font-size: 15px; color: var(--ink-2); max-width: none; }
 
 .head { display: grid; gap: 8px; }
@@ -200,7 +201,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
 
 <div class="wrap">
   <aside class="warning" role="note" aria-label="Disclaimer">
-    <p>Every dive plan carries risk. This planner is provided as is, without any warranty that it applies the Bühlmann ZH-L16C model and gradient factors correctly or that its schedules will keep you free of decompression sickness. You use it at your own risk. Diving is inherently dangerous, decompression diving adds to that risk, and deep dives on several gases including helium add the most. Check every plan against other tools, follow your training and stay within your limits.</p>
+    <p><strong>For education only. Not for planning or conducting real dives.</strong> This planner is provided as is, without any warranty that it applies the Bühlmann ZH-L16C model and gradient factors correctly or that its schedules would prevent decompression sickness. Do not use its output to plan or execute any dive. Diving is inherently dangerous, decompression diving adds to that risk, and deep dives on several gases including helium add the most. Plan real dives with tested, established tools and the training to use them.</p>
   </aside>
 
   <header class="head">
