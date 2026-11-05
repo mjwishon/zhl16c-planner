@@ -353,7 +353,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
       <section>
         <div class="sec-head">
           <h2>Dive plan</h2>
-          <p>Stop times include the travel from the previous stop. Runtime is in whole minutes. Surf GF is the gradient factor you would surface with if you left at that point.</p>
+          <p>Stop times include the travel from the previous stop. Runtime is in whole minutes. Surf GF is the gradient factor you would surface with if you left at that point; on the Surface row it is the GF you arrive with.</p>
         </div>
         <div class="table-box"><table id="plan"></table></div>
       </section>
@@ -1086,7 +1086,7 @@ function renderPlan(P) {
       showPO2 ? r.po2.toFixed(2) : "",
       surf ? "" : Math.round(r.end) + " m",
       r.kind === "Stop" && r.gf != null ? Math.round(r.gf * 100) + " %" + (r.gfHold != null ? ` \u2192 ${Math.round(r.gfHold * 100)} %` : "") : "",
-      (r.kind === "Stop" || r.kind === "Level" || r.kind === "Safety") ? Math.round(r.surfGf * 100) + " %" : "",
+      (r.kind === "Stop" || r.kind === "Level" || r.kind === "Safety" || r.kind === "Surface") ? Math.round(r.surfGf * 100) + " %" : "",
     ];
     const po2Col = showSP ? 6 : 5;
     cells.forEach((c, i) => {
