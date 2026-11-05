@@ -501,8 +501,9 @@ const ZHL = (() => {
       const bottomRmv = b.phase !== "ascent" || (opt.rmvRule === "toFirstStop" && T.stage === "toFirst")
         || (opt.rmvRule === "throughFirstStop" && (T.stage === "toFirst" || T.stage === "first"));
       const rmv = bottomRmv ? opt.rmvBottom : opt.rmvDeco;
-      if (!gasUse.has(b.gas)) gasUse.set(b.gas, { gas: b.gas, litres: 0, seconds: 0 });
-      const u = gasUse.get(b.gas); u.litres += rmv * Pavg * sec / 60; u.seconds += sec;
+      const key = b.gas.mix;                           // one line per mix, whichever level or stop uses it
+      if (!gasUse.has(key)) gasUse.set(key, { gas: b.gas, litres: 0, seconds: 0 });
+      const u = gasUse.get(key); u.litres += rmv * Pavg * sec / 60; u.seconds += sec;
     };
     const snap = () => { if (S.rec) trace.push({ t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice() }); };
     snap();
