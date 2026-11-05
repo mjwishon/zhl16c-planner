@@ -324,6 +324,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
           <ul>
             <li>ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
             <li>CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.</li>
+            <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
             <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
@@ -481,8 +482,11 @@ const ZHL = (() => {
     }
     function addRow(kind, depth, dur, b) {
       // po2: inspired ppO2 (CCR: what the loop can actually hold at this depth)
+      // end: equivalent narcotic depth, O2 and N2 narcotic, helium not, air reference
+      const P = pamb(depth), ins = inspired(b, P), Pdry = Math.max(1e-9, P - opt.PH2O);
+      const end = Math.max(0, (P * (1 - ins[1] / Pdry) - opt.Psurf) * opt.mPerBar);
       rows.push({ kind, depth, dur, rt: S.t, gas: b.gas, ccr: b.ccr, sp: b.ccr ? b.sp : null,
-                  po2: inspired(b, pamb(depth))[2], o2: b.ccr ? b.sp : pamb(depth) * b.gas.FO2 });
+                  po2: ins[2], end, o2: b.ccr ? b.sp : P * b.gas.FO2 });
     }
     // Move up to dTo; OC splits the move at gas switch depths, and the move to the
     // first stop is also split at the 30 m waypoint (adds "Asc to" rows).
@@ -772,7 +776,7 @@ function renderPlan(P) {
   const tb = $("plan"); tb.replaceChildren();
   const hr = tb.createTHead().insertRow();
   const showSP = P.rows.some(r => r.ccr);
-  ["", "Depth", "Time", "Runtime", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "GF"].forEach((t, i) => {
+  ["", "Depth", "Time", "Runtime", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "END", "GF"].forEach((t, i) => {
     const th = document.createElement("th"); th.textContent = t; if (i === 4) th.className = "l"; hr.appendChild(th);
   });
   const body = tb.createTBody();
@@ -790,6 +794,7 @@ function renderPlan(P) {
       r.ccr ? "Diluent " + r.gas.mix : r.gas.label,
       ...(showSP ? [r.ccr && !surf ? r.sp.toFixed(2) : ""] : []),
       showPO2 ? r.po2.toFixed(2) : "",
+      surf ? "" : Math.round(r.end) + " m",
       r.kind === "Stop" ? Math.round(r.gf * 100) + " %" : "",
     ];
     const po2Col = showSP ? 6 : 5;
