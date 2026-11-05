@@ -331,7 +331,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
         </div>
         <div class="row">
           <label class="field" for="in-inc"><span>Stop spacing</span><span class="in"><select id="in-inc"><option value="3">3 m</option><option value="6">6 m</option></select></span></label>
-          <label class="field" for="in-last"><span>Last stop</span><span class="in"><select id="in-last"><option value="3">3 m</option><option value="6">6 m</option></select></span></label>
+          <label class="field" for="in-last"><span>Last stop</span><span class="in"><input id="in-last" type="number" min="1" max="9" step="0.5">m</span></label>
         </div>
         <label class="check" for="in-deep6"><input id="in-deep6" type="checkbox"> 6 m spacing for stops deeper than 30 m</label>
         <label class="check" for="in-nodeco"><input id="in-nodeco" type="checkbox"> No stops while a direct ascent stays within GF high</label>
@@ -636,7 +636,8 @@ const ZHL = (() => {
     function nextStop(D, isFirst) {
       const deep = isFirst ? D > opt.deepZone + 1e-9 : D - opt.deepInc > opt.deepZone + 1e-9;
       const N = deep ? D - opt.deepInc : D - opt.stopInc;
-      return N < opt.lastStop - 1e-9 ? 0 : N;
+      if (N >= opt.lastStop - 1e-9) return N;
+      return D > opt.lastStop + 1e-9 ? opt.lastStop : 0;   // a last stop off the grid (e.g. 4.5 m) comes next
     }
 
     // descent, bottom and any further levels. Level 1 time = runtime at its end (descent
@@ -978,6 +979,7 @@ function validate() {
     if (!(tm >= 1 && tm <= 300)) bad.push(`Level ${n} time must be 1 to 300 min.`);
     if (s.mode === "OC") gasOk(o2, he, `Level ${n} gas`);
   });
+  if (!(s.last >= 1 && s.last <= 9)) bad.push("Last stop must be 1 to 9 m.");
   if (!(s.tail >= 0 && s.tail <= 1440)) bad.push("Time after surfacing must be 0 to 1440 min.");
   if (s.ss && !(s.ssd >= 2 && s.ssd <= 15 && s.ssm >= 1 && s.ssm <= 15)) bad.push("Safety stop must be 2 to 15 m and 1 to 15 min.");
   if (!(s.gflo >= 10 && s.gflo <= 100 && s.gfhi >= 10 && s.gfhi <= 100)) bad.push("GF low and GF high must be 10 to 100 %.");
