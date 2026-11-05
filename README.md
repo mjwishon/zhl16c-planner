@@ -1,6 +1,6 @@
 # ZH-L16C Planner
 
-> This planner follows the published Bühlmann ZH-L16C model with gradient factors and comes without warranty. Check every plan against your own planning software or dive computer, and dive within your training.
+> Every dive plan carries risk. This planner is provided as is, without any warranty that it applies the Bühlmann ZH-L16C model and gradient factors correctly or that its schedules will keep you free of decompression sickness. You use it at your own risk. Diving is inherently dangerous, decompression diving adds to that risk, and deep dives on several gases including helium add the most. Check every plan against other tools, follow your training and stay within your limits.
 
 **App:** https://mjwishon.github.io/zhl16c-planner/
 
@@ -15,11 +15,13 @@ A Bühlmann ZH-L16C decompression planner with gradient factors for open circuit
 - Descent rate, ascent rate to the first stop, rate between stops, and rate to the surface
 - Stop spacing, last stop depth, and 6 m spacing for stops deeper than 30 m
 - No stops while a direct ascent stays within GF high (on by default)
+- Bottom and deco RMV for gas planning (open circuit and bailout; defaults 15 and 12 L/min)
 - Safety stop on no-deco dives, with its depth and time (on by default, 3 min at 5 m)
 
 ## What it shows
 
 - The dive plan as a runtime table (depth, stop time, runtime, gas, setpoint, ppO₂, END, GF at each stop)
+- Gas needed per open-circuit gas, in surface litres
 - The profile with the decompression ceiling
 - A bar chart of all 16 compartments on surfacing, showing how close each is to its M-value and which one leads
 

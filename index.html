@@ -151,6 +151,12 @@ tr.minor td { color: var(--muted); }
 td .m { color: var(--muted); }
 td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(--warn-line) 16%, transparent); }
 
+.gasbox { background: var(--surface); border-radius: 8px; padding: 14px 16px; max-width: 440px; display: grid; gap: 8px; }
+.gasbox h2 { font-size: 15px; }
+.gasbox table { min-width: 0; font-size: 13.5px; }
+.gasbox th, .gasbox td { padding: 5px 8px; }
+.gasbox th:first-child, .gasbox td:first-child { padding-left: 0; }
+.gasbox tfoot td { font-weight: 600; border-top: 1px solid var(--axis); border-bottom: 0; }
 .chart { position: relative; background: var(--surface); border-radius: 8px; padding: 12px 8px 6px; min-width: 0; }
 .chart svg { display: block; width: 100%; overflow: visible; }
 .chart text { font-family: var(--font-mono); font-size: 11.5px; fill: var(--muted); }
@@ -193,8 +199,8 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
 
 
 <div class="wrap">
-  <aside class="warning" role="note" aria-label="About this planner">
-    <p>This planner follows the published Bühlmann ZH-L16C model with gradient factors and comes without warranty. Check every plan against your own planning software or dive computer, and dive within your training.</p>
+  <aside class="warning" role="note" aria-label="Disclaimer">
+    <p>Every dive plan carries risk. This planner is provided as is, without any warranty that it applies the Bühlmann ZH-L16C model and gradient factors correctly or that its schedules will keep you free of decompression sickness. You use it at your own risk. Diving is inherently dangerous, decompression diving adds to that risk, and deep dives on several gases including helium add the most. Check every plan against other tools, follow your training and stay within your limits.</p>
   </aside>
 
   <header class="head">
@@ -262,6 +268,15 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
         <p class="hint">Switch depth: leave blank for the default (ppO<sub>2</sub> 1.40 up to 28 % O<sub>2</sub>, 1.50 up to 45 %, 1.60 above, pure O<sub>2</sub> at 6 m), or type a depth.</p>
       </fieldset>
 
+      <fieldset id="grp-gasplan">
+        <legend>Gas planning</legend>
+        <div class="row">
+          <label class="field" for="in-rmvb"><span>Bottom RMV</span><span class="in"><input id="in-rmvb" type="number" min="5" max="60" step="1">L/min</span></label>
+          <label class="field" for="in-rmvd"><span>Deco RMV</span><span class="in"><input id="in-rmvd" type="number" min="5" max="60" step="1">L/min</span></label>
+        </div>
+        <p class="hint">Bottom RMV covers the descent, bottom, ascent and first stop; deco RMV the rest. In bailout, open-circuit gas starts at the end of the bottom.</p>
+      </fieldset>
+
       <fieldset>
         <legend>Rates and stops</legend>
         <div class="row">
@@ -301,6 +316,14 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
         <div class="table-box"><table id="plan"></table></div>
       </section>
 
+      <section id="sec-gas">
+        <div class="gasbox">
+          <h2>Gas needed</h2>
+          <table id="gas"></table>
+          <p class="hint" id="gas-note">Surface litres at the RMVs set, no reserve added.</p>
+        </div>
+      </section>
+
       <section>
         <div class="sec-head">
           <h2>Profile</h2>
@@ -325,6 +348,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
             <li>ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
             <li>CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.</li>
             <li>ppO<sub>2</sub> is shown exactly and flagged above 1.6 bar, except pure oxygen at the standard 6 m stop (1.61).</li>
+            <li>Gas: RMV times ambient pressure over time, in surface litres. Bottom RMV for the descent, bottom, ascent and first stop, deco RMV after. Switch depths and gas volumes use 1 bar plus 1 bar per 10.08 m.</li>
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
@@ -368,6 +392,8 @@ const ZHL = (() => {
     mPerBar: 10, Psurf: 1.01325, PH2O: 0.0530, FN2air: 0.79,
     firstStopTol: 0.05, dtTravel: 1, dtHold: 10, maxRuntime: 2000,
     safetyStop: false, safetyDepth: 5, safetyTime: 3,
+    rmvBottom: 15, rmvDeco: 12,                        // L/min at the surface, open circuit
+    gasPsurf: 1.0, gasMPerBar: 10.08, rmvRule: "throughFirstStop", // gas volume and switch-depth convention (fitted)
   };
 
   // Gas. opts: {deco:true} default ppO2 limits; {ppO2max}; {switch_m} explicit switch depth.
@@ -380,7 +406,7 @@ const ZHL = (() => {
     }
     if ((pp != null || sw != null) && pp != null) {
       g.ppO2max = pp;
-      g.switch_m = 3 * Math.floor(((pp / FO2 - 1) * 10) / 3 + 1e-9);
+      g.switch_m = 3 * Math.floor(((pp / FO2 - DEFAULTS.gasPsurf) * DEFAULTS.gasMPerBar) / 3 + 1e-9);
     }
     if (sw != null) g.switch_m = sw;
     const o2 = Math.round(FO2 * 100), he = Math.round(FHe * 100);
@@ -427,16 +453,25 @@ const ZHL = (() => {
     const pn0 = (opt.Psurf - opt.PH2O) * opt.FN2air;
     const S = { t: 0, d: 0, PN2: new Array(16).fill(pn0), PHe: new Array(16).fill(0), rec: true };
     const rows = [], stops = [], trace = [];
+    const gasUse = new Map();                         // open-circuit gas: surface litres and time
+    const useGas = (T, b, Pavg, sec) => {
+      if (!T.rec || b.ccr || sec <= 0) return;
+      const bottomRmv = b.phase !== "ascent" || (opt.rmvRule === "toFirstStop" && T.stage === "toFirst")
+        || (opt.rmvRule === "throughFirstStop" && (T.stage === "toFirst" || T.stage === "first"));
+      const rmv = bottomRmv ? opt.rmvBottom : opt.rmvDeco;
+      if (!gasUse.has(b.gas)) gasUse.set(b.gas, { gas: b.gas, litres: 0, seconds: 0 });
+      const u = gasUse.get(b.gas); u.litres += rmv * Pavg * sec / 60; u.seconds += sec;
+    };
     const snap = () => { if (S.rec) trace.push({ t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice() }); };
     snap();
 
     function breathing(phase, d) {
       if (ccr && !(phase === "ascent" && ocAsc)) {
-        return { ccr: true, gas: dive.diluent, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco };
+        return { ccr: true, phase, gas: dive.diluent, sp: phase === "descent" ? sp.descent : phase === "bottom" ? sp.bottom : sp.deco };
       }
       let g = bottomGas;
       if (phase === "ascent") for (const dg of decoGases) if (dg.switch_m >= d - 1e-9 && dg.FO2 > g.FO2) g = dg;
-      return { ccr: false, gas: g, sp: NaN };
+      return { ccr: false, phase, gas: g, sp: NaN };
     }
     function inspired(b, P) {
       const g = b.gas, Pdry = Math.max(0, P - opt.PH2O);
@@ -464,6 +499,7 @@ const ZHL = (() => {
         if (T.rec) trace.push({ t: t0 + h * i, d: d1, PN2: T.PN2.slice(), PHe: T.PHe.slice() });
         a2 = b2; ah = bh;
       }
+      useGas(T, b, opt.gasPsurf + (d0 + dTo) / 2 / opt.gasMPerBar, dur);
       T.t = t0 + dur; T.d = dTo;
     }
     function hold(T, dur, b) {
@@ -472,6 +508,7 @@ const ZHL = (() => {
       const [p2, ph] = inspired(b, pamb(T.d));
       const eN = KN2.map(k => Math.exp(-k * h)), eH = KHE.map(k => Math.exp(-k * h));
       const t0 = T.t;
+      useGas(T, b, opt.gasPsurf + T.d / opt.gasMPerBar, dur);
       for (let i = 1; i <= n; i++) {
         for (let c = 0; c < 16; c++) {
           T.PN2[c] = p2 + (T.PN2[c] - p2) * eN[c];
@@ -572,7 +609,9 @@ const ZHL = (() => {
         ascend(S, 0, opt.surface, false, true);
       }
     } else {
+      S.stage = "toFirst";
       if (fs < S.d) ascend(S, fs, opt.ascent, true, true);
+      S.stage = "first";
       let D = S.d, isFirst = true, tLastDep = S.t;
       while (D > 0) {
         const N = nextStop(D, isFirst);
@@ -587,7 +626,7 @@ const ZHL = (() => {
         addRow("Stop", D, isFirst ? S.t - tArr : S.t - tLastDep, b);
         rows[rows.length - 1].gf = gfAt(D, fs, gf);
         stops.push([D, S.t - tArr, S.t]);
-        tLastDep = S.t; isFirst = false;
+        tLastDep = S.t; isFirst = false; S.stage = "deco";
         ascend(S, N, N === 0 ? opt.surface : opt.deco, false, false);
         D = N;
       }
@@ -609,7 +648,8 @@ const ZHL = (() => {
     });
     return { rows, stops, firstStop: fs, ndl, tAscent, tSurface: S.t,
              lastDepart: stops.length ? stops[stops.length - 1][2] : S.t,
-             trace: trace.map((p, i) => [p.t, p.d, ceil[i]]), tissues };
+             trace: trace.map((p, i) => [p.t, p.d, ceil[i]]), tissues,
+             gasUse: [...gasUse.values()].map(u => ({ gas: u.gas, litres: u.litres, minutes: u.seconds / 60 })) };
   }
 
   return { plan, gas, gfAt, DEFAULTS };
@@ -622,7 +662,7 @@ const DEFAULTS = {
   perMode: { OC: { depth: 60, rt: 30 }, CCR: { depth: 80, rt: 30 }, BAIL: { depth: 80, rt: 30 } },
   bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3, ao2: 12, ahe: 65,
   decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[35, 25, ""], [50, 0, ""], [100, 0, ""]],
-  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3,
+  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12,
 };
 const NS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
@@ -649,7 +689,7 @@ function lineKey(color, dash) {
 function showMsg(s) { const m = $("msg"); m.textContent = s; m.hidden = !s; }
 
 // ---- inputs -------------------------------------------------------------------------
-const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm"];
+const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd"];
 function writeInputs() {
   Object.assign(state, state.perMode[state.mode]);   // depth and bottom time are kept per mode
   NUM.forEach(k => $("in-" + k).value = state[k]);
@@ -718,6 +758,7 @@ function validate() {
     if (![s.sp1, s.sp2, s.sp3].every(v => v >= 0.4 && v <= 1.6)) bad.push("Setpoints must be 0.4 to 1.6 bar.");
     if (s.mode === "BAIL") gasOk(s.ao2, s.ahe, "Bailout gas");
   }
+  if (s.mode !== "CCR" && !(s.rmvb >= 5 && s.rmvb <= 60 && s.rmvd >= 5 && s.rmvd <= 60)) bad.push("RMV must be 5 to 60 L/min.");
   if (s.mode !== "CCR") decoList().forEach((g, i) => {
     gasOk(g[0], g[1], "Deco gas " + (i + 1));
     if (g[2] !== "" && !(Number(g[2]) >= 3)) bad.push(`Deco gas ${i + 1} switch depth must be at least 3 m.`);
@@ -731,7 +772,7 @@ function buildDive() {
     depth: s.depth, runtime: s.rt, gf: [s.gflo / 100, s.gfhi / 100],
     settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
                 lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6, noDecoCheck: s.nodeco,
-                safetyStop: s.ss, safetyDepth: s.ssd, safetyTime: s.ssm },
+                safetyStop: s.ss, safetyDepth: s.ssd, safetyTime: s.ssm, rmvBottom: s.rmvb, rmvDeco: s.rmvd },
   };
   const deco = () => decoList().map(g => ZHL.gas(g[0] / 100, g[1] / 100,
     g[2] === "" ? { deco: true } : { deco: true, switch_m: Number(g[2]) }));
@@ -751,6 +792,8 @@ function showGroups() {
   $("grp-ccr").hidden = m === "OC";
   $("grp-bail").hidden = m !== "BAIL";
   $("grp-deco").hidden = m === "CCR";
+  $("grp-gasplan").hidden = m === "CCR";
+  $("sec-gas").hidden = m === "CCR";
   $("ss-row").hidden = !state.ss;
   $("deco-legend").textContent = m === "BAIL" ? "Bailout deco gases" : "Deco gases";
 }
@@ -809,6 +852,28 @@ function renderPlan(P) {
       if (i === po2Col && showPO2 && (r.po2Limit > 1.6 + 1e-9 || r.po2 < 0.16)) td.className = "hi";
     });
   });
+}
+
+// ---- gas box ---------------------------------------------------------------------------
+function renderGas(P) {
+  const tb = $("gas"); tb.replaceChildren();
+  if (state.mode === "CCR") return;
+  const hr = tb.createTHead().insertRow();
+  ["Gas", "Time", "Litres"].forEach(t => { const th = document.createElement("th"); th.textContent = t; hr.appendChild(th); });
+  const body = tb.createTBody();
+  let total = 0;
+  P.gasUse.forEach(u => {
+    const tr = body.insertRow();
+    [u.gas.label, Math.round(u.minutes) + " min", Math.round(u.litres).toLocaleString("en-US")].forEach((c, i) => {
+      const td = tr.insertCell(); td.textContent = c; if (i === 0) td.className = "l";
+    });
+    total += u.litres;
+  });
+  const tr = tb.createTFoot().insertRow();
+  ["Total", "", Math.round(total).toLocaleString("en-US")].forEach((c, i) => { const td = tr.insertCell(); td.textContent = c; if (i === 0) td.className = "l"; });
+  $("gas-note").textContent = state.mode === "BAIL"
+    ? `Open-circuit bailout from the end of the bottom. Surface litres at ${state.rmvb} / ${state.rmvd} L/min, no reserve added.`
+    : `Surface litres at ${state.rmvb} / ${state.rmvd} L/min, no reserve added.`;
 }
 
 // ---- tooltip --------------------------------------------------------------------------
@@ -963,7 +1028,7 @@ function update() {
   catch (e) { showMsg(e.message + " Showing the last valid plan."); return; }
   showMsg(oxygenWarnings(P));
   current = { P, depth: state.depth, gfhi: state.gfhi };
-  renderSummary(P); renderPlan(P); drawCharts();
+  renderSummary(P); renderPlan(P); renderGas(P); drawCharts();
 }
 function drawCharts() {
   if (!current) return;
