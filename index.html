@@ -277,6 +277,11 @@ td .m { color: var(--muted); }
         </div>
         <label class="check" for="in-deep6"><input id="in-deep6" type="checkbox"> 6 m spacing for stops deeper than 30 m</label>
         <label class="check" for="in-nodeco"><input id="in-nodeco" type="checkbox"> No stops while a direct ascent stays within GF high</label>
+        <label class="check" for="in-ss"><input id="in-ss" type="checkbox"> Safety stop on no-deco dives</label>
+        <div class="row" id="ss-row">
+          <label class="field" for="in-ssd"><span>Safety stop depth</span><span class="in"><input id="in-ssd" type="number" min="2" max="15" step="1">m</span></label>
+          <label class="field" for="in-ssm"><span>Safety stop time</span><span class="in"><input id="in-ssm" type="number" min="1" max="15" step="1">min</span></label>
+        </div>
         <p class="hint">Ascent is the rate from the bottom to the first stop.</p>
       </fieldset>
 
@@ -318,7 +323,7 @@ td .m { color: var(--muted); }
           <ul>
             <li>ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
             <li>CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.</li>
-            <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no stops.</li>
+            <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
             <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF clears the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
             <li>Open circuit and bailout: the richest gas within its switch depth is used. On the way to the first stop the switch happens at the switch depth; after that, on arrival at a stop.</li>
@@ -359,6 +364,7 @@ const ZHL = (() => {
     lastStopOC: 3, lastStopCCR: 3, waypoint: 30,
     mPerBar: 10, Psurf: 1.01325, PH2O: 0.0530, FN2air: 0.79,
     firstStopTol: 0.05, dtTravel: 1, dtHold: 10, maxRuntime: 2000,
+    safetyStop: false, safetyDepth: 5, safetyTime: 3,
   };
 
   // Gas. opts: {deco:true} default ppO2 limits; {ppO2max}; {switch_m} explicit switch depth.
@@ -539,8 +545,17 @@ const ZHL = (() => {
     }
 
     if (fs <= 0) {
-      if (S.d > opt.lastStop) ascend(S, opt.lastStop, opt.ascent, true, true);
-      ascend(S, 0, opt.surface, false, true);
+      if (opt.safetyStop && opt.safetyTime > 0 && S.d > opt.safetyDepth + 1e-9) {
+        // optional safety stop on a no-deco dive (does not change the no-deco limit)
+        ascend(S, opt.safetyDepth, opt.ascent, true, true);
+        const bs = breathing("ascent", S.d), tA = S.t;
+        hold(S, opt.safetyTime * 60, bs);
+        addRow("Safety", S.d, S.t - tA, bs);
+        ascend(S, 0, opt.surface, false, true);
+      } else {
+        if (S.d > opt.lastStop) ascend(S, opt.lastStop, opt.ascent, true, true);
+        ascend(S, 0, opt.surface, false, true);
+      }
     } else {
       if (fs < S.d) ascend(S, fs, opt.ascent, true, true);
       let D = S.d, isFirst = true, tLastDep = S.t;
@@ -591,7 +606,7 @@ const DEFAULTS = {
   mode: "OC", depth: 60, rt: 30, gflo: 30, gfhi: 70,
   bo2: 18, bhe: 45, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.3, sp3: 1.3, ao2: 12, ahe: 65,
   decoOC: [[50, 0, ""], [100, 0, ""]], decoBail: [[25, 35, ""], [50, 0, ""], [100, 0, ""]],
-  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true,
+  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 3, deep6: true, nodeco: true, ss: true, ssd: 5, ssm: 3,
 };
 const NS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
@@ -618,10 +633,10 @@ function lineKey(color, dash) {
 function showMsg(s) { const m = $("msg"); m.textContent = s; m.hidden = !s; }
 
 // ---- inputs -------------------------------------------------------------------------
-const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4"];
+const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "sp1", "sp2", "sp3", "ao2", "ahe", "r1", "r2", "r3", "r4", "ssd", "ssm"];
 function writeInputs() {
   NUM.forEach(k => $("in-" + k).value = state[k]);
-  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco;
+  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss;
   ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
   renderGasList();
 }
@@ -662,7 +677,7 @@ function gasName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).la
 
 function readInputs() {
   NUM.forEach(k => state[k] = Number($("in-" + k).value));
-  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked;
+  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked; state.ss = $("in-ss").checked;
   const m = document.querySelector('input[name="mode"]:checked'); state.mode = m ? m.value : "OC";
 }
 
@@ -676,6 +691,7 @@ function validate() {
   if (!(s.r1 > 0 && s.r2 > 0 && s.r3 > 0 && s.r4 > 0)) bad.push("Rates must be above 0 m/min.");
   else if (!(s.rt >= s.depth / s.r1)) bad.push(`Bottom time must be at least the descent time (${(s.depth / s.r1).toFixed(1)} min).`);
   if (!(s.rt <= 300)) bad.push("Bottom time must be 300 min or less.");
+  if (s.ss && !(s.ssd >= 2 && s.ssd <= 15 && s.ssm >= 1 && s.ssm <= 15)) bad.push("Safety stop must be 2 to 15 m and 1 to 15 min.");
   if (!(s.gflo >= 10 && s.gflo <= 100 && s.gfhi >= 10 && s.gfhi <= 100)) bad.push("GF low and GF high must be 10 to 100 %.");
   else if (s.gflo > s.gfhi) bad.push("GF low must not be above GF high.");
   if (s.mode === "OC") gasOk(s.bo2, s.bhe, "Bottom gas");
@@ -696,7 +712,8 @@ function buildDive() {
   const dive = {
     depth: s.depth, runtime: s.rt, gf: [s.gflo / 100, s.gfhi / 100],
     settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
-                lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6, noDecoCheck: s.nodeco },
+                lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6, noDecoCheck: s.nodeco,
+                safetyStop: s.ss, safetyDepth: s.ssd, safetyTime: s.ssm },
   };
   const deco = () => decoList().map(g => ZHL.gas(g[0] / 100, g[1] / 100,
     g[2] === "" ? { deco: true } : { deco: true, switch_m: Number(g[2]) }));
@@ -716,6 +733,7 @@ function showGroups() {
   $("grp-ccr").hidden = m === "OC";
   $("grp-bail").hidden = m !== "BAIL";
   $("grp-deco").hidden = m === "CCR";
+  $("ss-row").hidden = !state.ss;
   $("deco-legend").textContent = m === "BAIL" ? "Bailout deco gases" : "Deco gases";
 }
 
@@ -748,17 +766,17 @@ function renderPlan(P) {
     const th = document.createElement("th"); th.textContent = t; if (i === 4) th.className = "l"; hr.appendChild(th);
   });
   const body = tb.createTBody();
-  const WHAT = { Dec: "Descend to", Level: "Bottom", Asc: "Ascend to", Stop: "Stop", Surface: "Surface" };
+  const WHAT = { Dec: "Descend to", Level: "Bottom", Asc: "Ascend to", Stop: "Stop", Safety: "Safety stop", Surface: "Surface" };
   P.rows.forEach(r => {
     const tr = body.insertRow();
-    tr.className = r.kind === "Stop" ? "stop" : (r.kind === "Asc" || r.kind === "Dec") ? "minor" : "";
+    tr.className = (r.kind === "Stop" || r.kind === "Safety") ? "stop" : (r.kind === "Asc" || r.kind === "Dec") ? "minor" : "";
     const cells = [
       WHAT[r.kind],
       r.kind === "Surface" ? "" : r.depth + " m",
       r.dur == null ? "" : mmss(r.dur),
       String(Math.floor(r.rt / 60 + 1e-9)),
       r.ccr ? "Diluent " + r.gas.name : r.gas.label,
-      r.kind === "Surface" ? "" : r.ccr ? r.o2.toFixed(2) + " SP" : (r.kind === "Level" || r.kind === "Stop") ? r.o2.toFixed(2) : "",
+      r.kind === "Surface" ? "" : r.ccr ? r.o2.toFixed(2) + " SP" : (r.kind === "Level" || r.kind === "Stop" || r.kind === "Safety") ? r.o2.toFixed(2) : "",
       r.kind === "Stop" ? Math.round(r.gf * 100) + " %" : "",
     ];
     cells.forEach((c, i) => { const td = tr.insertCell(); td.textContent = c; if (i === 4) td.className = "l"; });

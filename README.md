@@ -15,6 +15,7 @@ A Bühlmann ZH-L16C decompression planner with gradient factors for open circuit
 - Descent rate, ascent rate to the first stop, rate between stops, and rate to the surface
 - Stop spacing, last stop depth, and 6 m spacing for stops deeper than 30 m
 - No stops while a direct ascent stays within GF high (on by default)
+- Safety stop on no-deco dives, with its depth and time (on by default, 3 min at 5 m)
 
 ## What it shows
 
