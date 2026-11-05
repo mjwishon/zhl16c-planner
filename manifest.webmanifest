@@ -1,7 +1,7 @@
 {
   "name": "ZH-L16C Planner",
   "short_name": "ZH-L16C",
-  "description": "ZH-L16C decompression planner with gradient factors for OC, CCR and CCR with OC bailout. For reference and cross-checking.",
+  "description": "ZH-L16C decompression planner with gradient factors for OC, CCR and CCR with OC bailout.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

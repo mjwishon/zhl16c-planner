@@ -1,6 +1,6 @@
 # ZH-L16C Planner
 
-> **For reference and cross-checking.** This planner follows the published Bühlmann ZH-L16C model with gradient factors and comes without warranty. Check every plan against your own planning software or dive computer, and dive within your training.
+> This planner follows the published Bühlmann ZH-L16C model with gradient factors and comes without warranty. Check every plan against your own planning software or dive computer, and dive within your training.
 
 **App:** https://mjwishon.github.io/zhl16c-planner/
 
