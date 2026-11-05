@@ -324,6 +324,7 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
           <ul>
             <li>ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
             <li>CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.</li>
+            <li>ppO<sub>2</sub> is shown exactly and flagged above 1.6 bar, except pure oxygen at the standard 6 m stop (1.61).</li>
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
@@ -485,8 +486,12 @@ const ZHL = (() => {
       // end: equivalent narcotic depth, O2 and N2 narcotic, helium not, air reference
       const P = pamb(depth), ins = inspired(b, P), Pdry = Math.max(1e-9, P - opt.PH2O);
       const end = Math.max(0, (P * (1 - ins[1] / Pdry) - opt.Psurf) * opt.mPerBar);
+      // po2: exact inspired ppO2. po2Limit: value checked against 1.6 bar (exact), except
+      // pure oxygen at the standard 6 m stop, which is treated as 1.60
+      const o2Stop = !b.ccr && b.gas.FO2 >= 0.995 && depth <= 6 + 1e-9;
+      const po2Limit = o2Stop ? Math.min(ins[2], 1.6) : ins[2];
       rows.push({ kind, depth, dur, rt: S.t, gas: b.gas, ccr: b.ccr, sp: b.ccr ? b.sp : null,
-                  po2: ins[2], end, o2: b.ccr ? b.sp : P * b.gas.FO2 });
+                  po2: ins[2], po2Limit, end, o2: b.ccr ? b.sp : P * b.gas.FO2 });
     }
     // Move up to dTo; OC splits the move at gas switch depths, and the move to the
     // first stop is also split at the 30 m waypoint (adds "Asc to" rows).
@@ -801,7 +806,7 @@ function renderPlan(P) {
     cells.forEach((c, i) => {
       const td = tr.insertCell(); td.textContent = c;
       if (i === 4) td.className = "l";
-      if (i === po2Col && showPO2 && (r.po2 > 1.6 + 1e-9 || r.po2 < 0.16)) td.className = "hi";
+      if (i === po2Col && showPO2 && (r.po2Limit > 1.6 + 1e-9 || r.po2 < 0.16)) td.className = "hi";
     });
   });
 }
@@ -935,8 +940,8 @@ function drawTissues(P, gfhi) {
 function oxygenWarnings(P) {
   const out = [];
   const live = P.rows.filter(r => r.kind !== "Surface");
-  const hi = live.reduce((a, r) => (r.po2 > a.po2 ? r : a), live[0]);
-  if (hi && hi.po2 > 1.6 + 1e-9) {
+  const hi = live.reduce((a, r) => (r.po2Limit > a.po2Limit ? r : a), live[0]);
+  if (hi && hi.po2Limit > 1.6 + 1e-9) {
     out.push(hi.ccr && hi.po2 > hi.sp + 0.005
       ? `ppO₂ reaches ${hi.po2.toFixed(2)} bar at ${hi.depth} m: the diluent alone is above the ${hi.sp.toFixed(2)} setpoint, so the loop cannot hold it.`
       : `ppO₂ reaches ${hi.po2.toFixed(2)} bar at ${hi.depth} m, above 1.6 bar.`);
