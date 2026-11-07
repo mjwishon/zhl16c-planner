@@ -425,7 +425,7 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
             <li>ppO<sub>2</sub> is shown exactly and flagged above 1.6 bar, except pure oxygen at the standard 6 m stop (1.61).</li>
             <li>Gas: RMV times ambient pressure over time, in surface litres. Bottom RMV for the descent, bottom, ascent and first stop, deco RMV after. Switch depths and gas volumes use 1 bar plus 1 bar per 10.08 m.</li>
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
-            <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level.</li>
+            <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level. On the way up, open circuit switches to the best deco gas usable at each depth, as on the final ascent, but none richer in O<sub>2</sub> than the level's own gas; a shallower level breathed on a deco gas counts as deco for the ppO<sub>2</sub> limit (1.6 bar).</li>
             <li>Last-stop GF (optional): the stops follow the GF low to GF high line, but the last stop is held until surfacing would leave every compartment at or below this GF.</li>
             <li>CCR diluent changes (optional): on the ascent each listed diluent is used from its depth up, switched like an OC gas (at the depth on the way to the first stop, then on arrival at a stop). The setpoint stays as set.</li>
             <li>CCR oxygen at the last stop (optional, either or both): the last minutes of the loop's last stop on open-circuit oxygen, and extra time on oxygen after the loop clears. The ascent from the last stop is then on oxygen.</li>
@@ -433,7 +433,7 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
             <li>Cylinders: bar used is the surface litres divided by the cylinder water volume (AL80 11.1 L, AL40 5.7 L, twin AL80 22.2 L), from the fill pressure; a cylinder that would end below the warning level (default 50 bar) is flagged.</li>
             <li>Eliminate Helium Penalty (CCR and bailout, for education only): the compartments take up helium as if it were nitrogen (nitrogen half-times and a/b values), so the decompression is planned for an O<sub>2</sub>/N<sub>2</sub> mix. END, ppO<sub>2</sub>, gas density and gas volumes use the real mix.</li>
             <li>Gas density: the dry gas breathed at that depth, from the densities at 0 °C and 1 atm (O<sub>2</sub> 1.429, N<sub>2</sub> 1.251, He 0.179 g/L); in CCR the loop at its ppO<sub>2</sub> with the rest in the diluent’s N<sub>2</sub> : He ratio. Flagged above 5.2 g/L, the guideline of Anthony and Mitchell (2016).</li>
-            <li>Gas alerts (warnings only): ppO<sub>2</sub> above 1.4 bar in the working part of the dive (descent, travel gas, bottom, levels) or above 1.6 bar during the deco; END deeper than 40 m anywhere; for CCR, a diluent flush above 1.4 bar at a level depth, or above 1.6 bar at a diluent change.</li>
+            <li>Gas alerts (warnings only): ppO<sub>2</sub> above 1.4 bar in the working part of the dive (descent, travel gas, bottom, levels) or above 1.6 bar during the deco (stops and moves between levels count as deco, and so does a shallower level breathed on a deco gas, as an extended deco stop); END deeper than 40 m anywhere; for CCR, a diluent flush above 1.4 bar at a level depth, or above 1.6 bar at a diluent change.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
             <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF is within 1 cm of the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
@@ -685,33 +685,54 @@ const ZHL = (() => {
     let b;
     // Moving up to a shallower level: stop on the way whenever the GF-low ceiling would be
     // crossed, so the diver is never above the ceiling. Stops use the stop grid and whole minutes.
-    function climbToLevel(target, b) {
+    // OC: on the way up, switch to the best deco gas (highest O2) usable at each depth, as on the
+    // final ascent, but none richer than the level's own gas (no switching back on arrival).
+    let climbCap = 0;
+    function climbGas(d, b) {
+      if (ccr) return b;
+      let g = b.gas;
+      for (const dg of decoGases) if (dg.switch_m >= d - 1e-9 && dg.FO2 > g.FO2 && dg.FO2 <= climbCap + 1e-9) g = dg;
+      return g === b.gas ? b : { ccr: false, phase: b.phase, gas: g, sp: NaN };
+    }
+    function climbMove(T, to, rate, b, addRows) {       // split at the deco-gas switch depths
+      const pts = ccr ? [] : [...new Set(decoGases.map(g => g.switch_m).filter(p => p < T.d - 1e-9 && p > to + 1e-9))].sort((x, y) => y - x);
+      pts.push(to);
+      let bb = b;
+      for (const p of pts) {
+        bb = climbGas(T.d, b);
+        travel(T, p, rate, bb);
+        if (addRows) addRow("Asc", p, null, bb);
+      }
+      return bb;
+    }
+    function climbToLevel(target, b, levelGas) {
       const gLo = gf[0];
+      climbCap = levelGas ? levelGas.FO2 : b.gas.FO2;
       const okAfter = (to, rate) => {                 // ceiling after moving to `to` is at or above it
         const T = { t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice(), rec: false };
-        travel(T, to, rate, b);
+        climbMove(T, to, rate, b, false);
         return ceiling(T, gLo) <= to + opt.clearTol + 1e-9;
       };
-      if (okAfter(target, opt.ascent)) { travel(S, target, opt.ascent, b); addRow("Asc", S.d, null, b); return; }
+      if (okAfter(target, opt.ascent)) { climbMove(S, target, opt.ascent, b, true); return; }
       let D = Math.min(S.d, Math.max(target, roundUpStop(ceiling(S, gLo))));
       while (D < S.d - 1e-9 && !okAfter(D, opt.ascent)) D = Math.min(S.d, roundUpStop(D + 1e-3 - opt.firstStopTol));
-      if (D < S.d - 1e-9) { travel(S, D, opt.ascent, b); addRow("Asc", S.d, null, b); }
-      let first = true, tLast = S.t;
+      if (D < S.d - 1e-9) climbMove(S, D, opt.ascent, b, true);
+      let first = true, tLast = S.t, bMove = b;
       while (D > target + 1e-9) {
         const N = Math.max(target, nextStop(D, false));
-        const tArr = S.t;
+        const tArr = S.t, bS = climbGas(D, b);           // a gas whose switch depth is this stop: on arrival
         do {                                           // to the next whole minute, then 1 min at a time
-          hold(S, 60 * (Math.floor(S.t / 60 + 1e-6) + 1) - S.t, b);
+          hold(S, 60 * (Math.floor(S.t / 60 + 1e-6) + 1) - S.t, bS);
           if (S.t > opt.maxRuntime * 60) throw new Error(`Cannot clear the ${D} m stop on the way to the ${target} m level.`);
         } while (!okAfter(N, opt.deco));
-        addRow("Stop", D, first ? S.t - tArr : S.t - tLast, b);
+        addRow("Stop", D, first ? S.t - tArr : S.t - tLast, bS);
         first = false;
         rows[rows.length - 1].gf = gLo; rows[rows.length - 1].levelStop = true;
         tLast = S.t;
-        travel(S, N, opt.deco, b);
+        bMove = climbMove(S, N, opt.deco, b, false);
         D = N;
       }
-      addRow("Asc", S.d, null, b);
+      addRow("Asc", S.d, null, bMove);                // the gas breathed on the last move
     }
 
     levels.forEach((L, i) => {
@@ -723,7 +744,7 @@ const ZHL = (() => {
         addRow("Dec", S.d, null, bT);
       }
       b = breathing(i === 0 ? "descent" : "bottom", S.d);
-      if (i > 0 && L.depth < prev - 1e-9) climbToLevel(L.depth, b);
+      if (i > 0 && L.depth < prev - 1e-9) climbToLevel(L.depth, b, !ccr && L.gas ? L.gas : null);
       else {
         travel(S, L.depth, L.depth >= prev ? opt.descent : opt.ascent, b);
         if (i === 0 || Math.abs(L.depth - prev) > 1e-9) addRow(L.depth >= prev ? "Dec" : "Asc", S.d, null, b);
@@ -1219,7 +1240,8 @@ function renderPlan(P) {
     catch (e) { return ""; }
   };
   const WHAT = { Dec: "Descend to", Level: nLevels > 1 ? "Level" : "Bottom", Asc: "Ascend to", Stop: "Stop", Safety: "Safety stop", Surface: "Surface" };
-  P.rows.forEach(r => {
+  const wf = workFlags(P);
+  P.rows.forEach((r, ri) => {
     const tr = body.insertRow();
     tr.className = (r.kind === "Stop" || r.kind === "Safety") ? "stop" : (r.kind === "Asc" || r.kind === "Dec") ? "minor" : "";
     const surf = r.kind === "Surface";
@@ -1242,7 +1264,7 @@ function renderPlan(P) {
     cells.forEach((c, i) => {
       const td = tr.insertCell(); td.textContent = c;
       if (i === 5) td.className = "l";
-      const work = r.rt <= P.tAscent + 1e-6;
+      const work = wf[ri];
       if (i === po2Col && showPO2 && (r.po2 < 0.16 || (work ? r.po2 > LIMITS.ppo2Bottom + 0.015 : r.po2Limit > LIMITS.ppo2Deco + 1e-9))) td.className = "hi";
       if (i === po2Col + 1 && !surf && r.end > LIMITS.end + 0.5) td.className = "hi";
       if (i === po2Col + 2 && !surf && overDensity(r)) td.className = "hi";
@@ -1512,11 +1534,25 @@ function gasWarnings(P) {
 }
 
 // ---- oxygen warnings -----------------------------------------------------------------------
+// working part (ppO2 1.4): the descent and the levels. Stops and moves between levels are deco
+// (1.6), and so is a level reached by moving up and breathed on a deco gas (an extended deco stop).
+function workFlags(P) {
+  const deco = new Set(decoList().map(g => ZHL.gas(g[0] / 100, g[1] / 100).mix));
+  let deepest = 0;
+  return P.rows.map(r => {
+    if (r.rt > P.tAscent + 1e-6) return false;
+    if (r.kind === "Dec") return true;
+    if (r.kind !== "Level") return false;
+    const asDeco = !r.ccr && r.depth < deepest - 1e-9 && deco.has(r.gas.mix);
+    deepest = Math.max(deepest, r.depth);
+    return !asDeco;
+  });
+}
 function oxygenWarnings(P) {
   const out = [];
-  const live = P.rows.filter(r => r.kind !== "Surface");
+  const wf = workFlags(P), live = P.rows.map((r, i) => [r, wf[i]]).filter(([r]) => r.kind !== "Surface");
   // working part (descent, travel gas, bottom, levels): 1.4 bar; deco part (ascent and stops): 1.6 bar
-  const work = live.filter(r => r.rt <= P.tAscent + 1e-6), deco = live.filter(r => r.rt > P.tAscent + 1e-6);
+  const work = live.filter(x => x[1]).map(x => x[0]), deco = live.filter(x => !x[1]).map(x => x[0]);
   const loopNote = r => (r.ccr && r.po2 > r.sp + 0.005 ? " The diluent alone is above the setpoint, so the loop cannot hold it." : "");
   const wHi = work.reduce((a, r) => (!a || r.po2 > a.po2 ? r : a), null);
   if (wHi && wHi.po2 > LIMITS.ppo2Bottom + 0.015)
