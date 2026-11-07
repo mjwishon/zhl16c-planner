@@ -909,7 +909,7 @@ function showMsg(s) { const m = $("msg"); m.textContent = s; m.hidden = !s; }
 
 // ---- gas presets: GUE standard mixes, or Custom ------------------------------------------
 const PRESETS = [["Air", 21, 0], ["EAN32", 32, 0], ["30/30", 30, 30], ["21/35", 21, 35], ["18/45", 18, 45],
-  ["15/55", 15, 55], ["12/65", 12, 65], ["10/70", 10, 70], ["35/25", 35, 25], ["EAN50", 50, 0], ["Oxygen", 100, 0]];
+  ["15/55", 15, 55], ["12/65", 12, 65], ["10/70", 10, 70], ["8/85", 8, 85], ["35/25", 35, 25], ["EAN50", 50, 0], ["Oxygen", 100, 0]];
 const GUE_SWITCH = { "35/25": "36" };      // GUE switch depths that differ from the default ppO2 rule
 function fillMixSelect(sel) {
   if (sel.options.length) return;
@@ -1379,14 +1379,13 @@ function gasWarnings(P) {
   lv.forEach(([d, o2, he]) => {
     const p = mixPO2(o2, d), e = mixEND(he, d), name = mixName(o2, he);
     if (s.mode !== "OC" && over(p, LIMITS.ppo2Bottom)) add(`${who} ${name} at ${d} m: ppO\u2082 ${p.toFixed(2)} bar, above ${LIMITS.ppo2Bottom}.`);
-    if (e > LIMITS.end + 0.5) add(`${who} ${name} at ${d} m: END ${Math.round(e)} m, deeper than ${LIMITS.end} m.`);
+    if (s.mode !== "OC" && e > LIMITS.end + 0.5) add(`Diluent flush ${name} at ${d} m: END ${Math.round(e)} m (limit ${LIMITS.end} m).`);
   });
   // OC travel gas at its switch depth, and the bottom gas where it takes over
   if (s.mode === "OC" && s.tg) {
     const sw = travelSwitch();
     if (sw > 0) {
       const p = mixPO2(s.tgo2, sw), e = mixEND(s.tghe, sw), name = gasName(s.tgo2, s.tghe);
-      if (e > LIMITS.end + 0.5) add(`Travel gas ${name} at its ${sw} m switch: END ${Math.round(e)} m, deeper than ${LIMITS.end} m.`);
       if (s.tgo2 / 100 * ZHL.DEFAULTS.Psurf < 0.16) add(`Travel gas ${name} is hypoxic at the surface.`);
       if (mixPO2(s.bo2, sw) < 0.16) add(`Bottom gas ${mixName(s.bo2, s.bhe)} is hypoxic at the ${sw} m travel switch (ppO\u2082 ${mixPO2(s.bo2, sw).toFixed(2)} bar).`);
     }
@@ -1396,19 +1395,18 @@ function gasWarnings(P) {
     const sw = g[2] !== "" ? Number(g[2]) : autoSwitch(g[0], g[1]);
     if (!(sw > 0)) return;
     const p = mixPO2(g[0], sw), e = mixEND(g[1], sw), name = gasName(g[0], g[1]);
-    if (e > LIMITS.end + 0.5) add(`${name} at its ${sw} m switch: END ${Math.round(e)} m, deeper than ${LIMITS.end} m.`);
   });
   // CCR diluent changes: a flush at the change depth
   if (s.mode === "CCR") s.dilSw.forEach(([o2, he, d]) => {
     const p = mixPO2(o2, d), e = mixEND(he, d), name = mixName(o2, he);
     if (over(p, LIMITS.ppo2Deco)) add(`Diluent flush with ${name} at ${d} m: ppO\u2082 ${p.toFixed(2)} bar, above ${LIMITS.ppo2Deco}.`);
-    if (e > LIMITS.end + 0.5) add(`Diluent flush with ${name} at ${d} m: END ${Math.round(e)} m, deeper than ${LIMITS.end} m.`);
+    if (e > LIMITS.end + 0.5) add(`Diluent flush ${name} at ${d} m: END ${Math.round(e)} m (limit ${LIMITS.end} m).`);
   });
   // anything in the plan: END deeper than the limit
   const deep = P.rows.filter(r => r.kind !== "Surface" && r.end > LIMITS.end + 0.5);
   if (deep.length) {
     const w = deep.reduce((a, r) => (r.end > a.end ? r : a));
-    add(`END reaches ${Math.round(w.end)} m at ${w.depth} m in the plan, deeper than ${LIMITS.end} m.`);
+    if (!out.some(m => m.includes(`at ${w.depth} m: END`))) add(`END ${Math.round(w.end)} m at ${w.depth} m (limit ${LIMITS.end} m).`);
   }
   return out.join(" ");
 }
