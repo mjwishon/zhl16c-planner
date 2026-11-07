@@ -425,7 +425,7 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
             <li>ppO<sub>2</sub> is shown exactly and flagged above 1.6 bar, except pure oxygen at the standard 6 m stop (1.61).</li>
             <li>Gas: RMV times ambient pressure over time, in surface litres. Bottom RMV for the descent, bottom, ascent and first stop, deco RMV after. Switch depths and gas volumes use 1 bar plus 1 bar per 10.08 m.</li>
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre.</li>
-            <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level. On the way up, open circuit switches to the best deco gas usable at each depth, as on the final ascent, but none richer in O<sub>2</sub> than the level's own gas; a shallower level breathed on a deco gas counts as deco for the ppO<sub>2</sub> limit (1.6 bar).</li>
+            <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the ceiling is never crossed. The first of those stops is where GF low applies, and the GF line from there runs on through the later stops, the level (an extended stop) and the final deco, as on a single ascent; these stops count as deco (deco RMV after the first stop, CCR deco setpoint). A later level at or below that first stop starts a new line. On the way up, open circuit switches to the best deco gas usable at each depth, as on the final ascent, but none richer in O<sub>2</sub> than the level's own gas; a shallower level breathed on a deco gas counts as deco for the ppO<sub>2</sub> limit (1.6 bar).</li>
             <li>Last-stop GF (optional): the stops follow the GF low to GF high line, but the last stop is held until surfacing would leave every compartment at or below this GF.</li>
             <li>CCR diluent changes (optional): on the ascent each listed diluent is used from its depth up, switched like an OC gas (at the depth on the way to the first stop, then on arrival at a stop). The setpoint stays as set.</li>
             <li>CCR oxygen at the last stop (optional, either or both): the last minutes of the loop's last stop on open-circuit oxygen, and extra time on oxygen after the loop clears. The ascent from the last stop is then on oxygen.</li>
@@ -705,18 +705,27 @@ const ZHL = (() => {
       }
       return bb;
     }
-    function climbToLevel(target, b, levelGas) {
-      const gLo = gf[0];
-      climbCap = levelGas ? levelGas.FO2 : b.gas.FO2;
+    // GF slope anchor: once a move up to a shallower level needs stops, its first stop is where
+    // GF low applies, and Baker's line from there runs through the later stops, the level (an
+    // extended stop) and the final deco, as on a single ascent.
+    let gfAnchor = 0;
+    const anchorSpans = [];                            // [{t0, t1, d}]: where each anchored line applied
+    function climbToLevel(target, b0, levelGas) {
+      climbCap = levelGas ? levelGas.FO2 : b0.gas.FO2;
+      let b = Object.assign({}, b0, { phase: "ascent" });     // gas use: as on an ascent (RMV rule)
+      const gAt = d => gfAnchor > 0 ? gfAt(d, gfAnchor, gf) : gf[0];
       const okAfter = (to, rate) => {                 // ceiling after moving to `to` is at or above it
         const T = { t: S.t, d: S.d, PN2: S.PN2.slice(), PHe: S.PHe.slice(), rec: false };
         climbMove(T, to, rate, b, false);
-        return ceiling(T, gLo) <= to + opt.clearTol + 1e-9;
+        return ceiling(T, gAt(to)) <= to + opt.clearTol + 1e-9;
       };
-      if (okAfter(target, opt.ascent)) { climbMove(S, target, opt.ascent, b, true); return; }
-      let D = Math.min(S.d, Math.max(target, roundUpStop(ceiling(S, gLo))));
+      S.stage = gfAnchor > 0 ? "deco" : "toFirst";
+      if (okAfter(target, opt.ascent)) { climbMove(S, target, opt.ascent, b, true); S.stage = undefined; return; }
+      if (ccr && sp.deco > 0) b = Object.assign({}, b, { sp: sp.deco });   // stops on the way: deco setpoint
+      let D = Math.min(S.d, Math.max(target, roundUpStop(ceiling(S, gAt(S.d)))));
       while (D < S.d - 1e-9 && !okAfter(D, opt.ascent)) D = Math.min(S.d, roundUpStop(D + 1e-3 - opt.firstStopTol));
       if (D < S.d - 1e-9) climbMove(S, D, opt.ascent, b, true);
+      if (gfAnchor <= 0) { gfAnchor = D; anchorSpans.push({ t0: S.t, t1: Infinity, d: D }); S.stage = "first"; }
       let first = true, tLast = S.t, bMove = b;
       while (D > target + 1e-9) {
         const N = Math.max(target, nextStop(D, false));
@@ -724,19 +733,21 @@ const ZHL = (() => {
         do {                                           // to the next whole minute, then 1 min at a time
           hold(S, 60 * (Math.floor(S.t / 60 + 1e-6) + 1) - S.t, bS);
           if (S.t > opt.maxRuntime * 60) throw new Error(`Cannot clear the ${D} m stop on the way to the ${target} m level.`);
-        } while (!okAfter(N, opt.deco));
+        } while (ceiling(S, gAt(N)) - N > opt.clearTol + 1e-9);   // same test as the final deco stops
         addRow("Stop", D, first ? S.t - tArr : S.t - tLast, bS);
         first = false;
-        rows[rows.length - 1].gf = gLo; rows[rows.length - 1].levelStop = true;
-        tLast = S.t;
+        rows[rows.length - 1].gf = gAt(D); rows[rows.length - 1].levelStop = true;
+        tLast = S.t; S.stage = "deco";
         bMove = climbMove(S, N, opt.deco, b, false);
         D = N;
       }
       addRow("Asc", S.d, null, bMove);                // the gas breathed on the last move
+      S.stage = undefined;
     }
 
     levels.forEach((L, i) => {
       const prev = S.d;
+      if (gfAnchor > 0 && L.depth >= gfAnchor - 1e-9) { gfAnchor = 0; anchorSpans[anchorSpans.length - 1].t1 = S.t; }
       const tg = dive.travelGas;
       if (i === 0 && !ccr && tg && tg.gas && tg.depth > 0 && tg.depth < L.depth - 1e-9) {
         const bT = { ccr: false, phase: "descent", gas: tg.gas, sp: NaN };   // OC: travel gas, then the bottom gas
@@ -770,6 +781,15 @@ const ZHL = (() => {
       fs = roundUpStop(fs + 1e-3 - opt.firstStopTol);
     }
     if (fs >= S.d && fs > 0) fs = Math.max(opt.lastStop, opt.stopInc * Math.floor(S.d / opt.stopInc + 1e-9));
+    // after a move up to a level that needed stops, the GF line stays anchored at that move's first
+    // stop; stops already clear on that line are skipped
+    if (gfAnchor > 0) {
+      while (fs > 0) {
+        const N = nextStop(fs, false);
+        if (ceiling(S, gfAt(N, gfAnchor, gf)) > N + opt.clearTol + 1e-9) break;
+        fs = N;
+      }
+    }
 
     // No-decompression check: if a direct ascent keeps every compartment within
     // GF high on surfacing, no stops are needed (GF low only shapes real deco).
@@ -788,6 +808,7 @@ const ZHL = (() => {
       while (ndl < 200) { hold(T, 60, bb); if (!directOk(T)) break; ndl++; }
     }
 
+    const gfFs = gfAnchor > 0 ? Math.max(gfAnchor, fs) : fs;
     if (fs <= 0) {
       if (opt.safetyStop && opt.safetyTime > 0 && S.d > opt.safetyDepth + 1e-9) {
         // optional safety stop on a no-deco dive (does not change the no-deco limit)
@@ -801,13 +822,13 @@ const ZHL = (() => {
         ascend(S, 0, opt.surface, false, true);
       }
     } else {
-      S.stage = "toFirst";
-      if (fs < S.d) ascend(S, fs, opt.ascent, true, true);
-      S.stage = "first";
+      S.stage = gfAnchor > 0 ? "deco" : "toFirst";      // anchored: the first stop is already behind
+      if (fs < S.d) ascend(S, fs, gfAnchor > 0 ? opt.deco : opt.ascent, true, true);   // anchored: between stops
+      S.stage = gfAnchor > 0 ? "deco" : "first";
       let D = S.d, isFirst = true, tLastDep = S.t;
       while (D > 0) {
         const N = nextStop(D, isFirst);
-        const gN = N === 0 && gfLast != null ? gfLast : gfAt(N, fs, gf);
+        const gN = N === 0 && gfLast != null ? gfLast : gfAt(N, gfFs, gf);
         b = breathing("ascent", D);                 // gas switch on arrival at the stop
         const tArr = S.t;
         if (N === 0 && o2b && b.ccr) {               // CCR: OC oxygen at the last stop
@@ -841,7 +862,7 @@ const ZHL = (() => {
             addRow("Stop", D, k === 0 ? z - prevT : z - a, bb);
             const row = rows[rows.length - 1];
             row.rt = z; row.surfGf = sg;
-            if (cleared) { row.gf = gfAt(D, fs, gf); if (gfLast != null) row.gfHold = gfLast; }
+            if (cleared) { row.gf = gfAt(D, gfFs, gf); if (gfLast != null) row.gfHold = gfLast; }
           });
           const lastB = parts[parts.length - 1][2];
           if (!lastB.ccr) surfB = lastB;
@@ -857,7 +878,7 @@ const ZHL = (() => {
           if (S.t > opt.maxRuntime * 60) throw new Error(`Cannot clear the ${D} m stop with these settings.`);
         }
         addRow("Stop", D, isFirst ? S.t - tArr : S.t - tLastDep, b);
-        rows[rows.length - 1].gf = gfAt(D, fs, gf);
+        rows[rows.length - 1].gf = gfAt(D, gfFs, gf);
         if (N === 0 && gfLast != null) rows[rows.length - 1].gfHold = gfLast;
         stops.push([D, S.t - tArr, S.t]);
         tLastDep = S.t; isFirst = false; S.stage = "deco";
@@ -869,7 +890,8 @@ const ZHL = (() => {
 
     // ceiling (GF in control) along the trace
     const ceil = trace.map(p => {
-      const g = p.t <= tAscent + 1e-9 ? gf[0] : gfAt(p.d, fs, gf);
+      const span = anchorSpans.find(s => p.t >= s.t0 - 1e-9 && p.t <= s.t1 + 1e-9);
+      const g = p.t <= tAscent + 1e-9 ? (span ? gfAt(p.d, span.d, gf) : gf[0]) : gfAt(p.d, gfFs, gf);
       return Math.max(0, ceilingOf(p.PN2, p.PHe, g, opt));
     });
     // levels: worst point where the GF-low ceiling was deeper than the diver (no stops are added there)
@@ -888,7 +910,7 @@ const ZHL = (() => {
       const M = Ps / bb + a;
       return { n: i + 1, htN2: HTN2[i], htHe: HTHE[i], PN2: pn, PHe: ph, Pt: pt, M, gf: (pt - Ps) / (M - Ps) };
     });
-    return { rows, stops, firstStop: fs, ndl, tAscent, tSurface: S.t, levelViolation,
+    return { rows, stops, firstStop: gfFs, ndl, tAscent, tSurface: S.t, levelViolation,
              lastDepart: stops.length ? stops[stops.length - 1][2] : S.t,
              trace: trace.map((p, i) => [p.t, p.d, ceil[i]]), tissues,
              loading: (() => {                              // compartment pressures over time (about 600 points)
@@ -1203,7 +1225,7 @@ function renderSummary(P) {
     ["Runtime", Math.round(P.tSurface / 60), "min", "at the surface"],
     ["Deco", Math.round((P.tSurface - P.tAscent) / 60), "min", "ascent and stops"],
     ["First stop", P.firstStop > 0 ? P.firstStop : "none", P.firstStop > 0 ? "m" : "",
-      P.firstStop > 0 ? `${P.stops.length} stops`
+      P.firstStop > 0 ? `${P.stops.length + P.rows.filter(r => r.levelStop).length} stops`
         : P.ndl != null ? `no-deco time left ${P.ndl >= 200 ? "over 200" : P.ndl} min` : "no stops needed"],
     ["Leading compartment", "#" + lead.n, "", `GF ${Math.round(lead.gf * 100)} % on surfacing`],
   ];
