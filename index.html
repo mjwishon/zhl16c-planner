@@ -284,7 +284,12 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
       </fieldset>
 
       <fieldset id="grp-ccr">
-        <legend>Setpoints</legend>
+        <legend>Diluent and setpoints</legend>
+        <div class="row">
+          <label class="field" for="in-dmix"><span>Diluent</span><span class="in"><select id="in-dmix" class="mixsel" data-o2id="in-do2" data-heid="in-dhe"></select></span></label>
+          <label class="field" for="in-do2"><span>O<sub>2</sub></span><span class="in"><input id="in-do2" type="number" min="5" max="100" step="1">%</span></label>
+          <label class="field" for="in-dhe"><span>He</span><span class="in"><input id="in-dhe" type="number" min="0" max="95" step="1">%</span></label>
+        </div>
         <div class="row">
           <label class="field" for="in-sp1"><span>SP descent</span><span class="in"><input id="in-sp1" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
           <label class="field" for="in-sp2"><span>SP bottom</span><span class="in"><input id="in-sp2" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
@@ -878,7 +883,7 @@ const ZHL = (() => {
 const DEFAULTS = {
   mode: "OC", depth: 80, rt: 25, gflo: 30, gfhi: 70, gf3on: false, gf3: 70, tg: true, tgo2: 21, tghe: 35, tgd: "", o2b: false, o2bt: 15, o2a: false, o2at: 15,
   extra: [],
-  bo2: 12, bhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3,
+  bo2: 12, bhe: 65, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3,
   // GUE standard deco gases and switch depths: 21/35 at 57 m, 35/25 at 36 m, 50 % at 21 m, O2 at 6 m
   decoOC: [[21, 35, ""], [35, 25, "36"], [50, 0, ""], [100, 0, ""]], decoCCR: [], dilSw: [],
   r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 6, deep6: false, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12, tail: 120,
@@ -1006,7 +1011,7 @@ function renderDilSw() {
 function mixName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).mix : ""; }
 
 // ---- inputs -------------------------------------------------------------------------
-const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "tgo2", "tghe", "sp1", "sp2", "sp3", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd", "tail", "gf3", "o2bt", "o2at"];
+const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "tgo2", "tghe", "sp1", "sp2", "sp3", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd", "tail", "gf3", "o2bt", "o2at"];
 function writeInputs() {
   NUM.forEach(k => $("in-" + k).value = state[k]);
   $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss; $("in-gf3on").checked = state.gf3on; $("in-o2b").checked = state.o2b; $("in-o2a").checked = state.o2a; $("in-tg").checked = state.tg; $("in-tgd").value = state.tgd;
@@ -1086,7 +1091,8 @@ function validate() {
     if (!(d >= 3 && d <= 150)) bad.push(`Diluent change ${i + 1} depth must be 3 to 150 m.`);
   });
   if (s.mode === "CCR" && ((s.o2b && !(s.o2bt >= 1 && s.o2bt <= 120)) || (s.o2a && !(s.o2at >= 1 && s.o2at <= 120)))) bad.push("Time on O2 must be 1 to 120 min.");
-  gasOk(s.bo2, s.bhe, s.mode === "OC" ? "Bottom gas" : "Diluent");
+  if (s.mode !== "CCR") gasOk(s.bo2, s.bhe, s.mode === "OC" ? "Bottom gas" : "Bailout bottom gas");
+  if (s.mode !== "OC") gasOk(s.do2, s.dhe, "Diluent");
   if (s.mode === "OC" && s.tg) {
     gasOk(s.tgo2, s.tghe, "Travel gas");
     if (s.tgd !== "" && !(Number(s.tgd) >= 3)) bad.push("Travel gas switch depth must be at least 3 m.");
@@ -1117,7 +1123,7 @@ function buildDive() {
   if (s.mode === "OC") {
     Object.assign(dive, { mode: "OC", bottomGas: ZHL.gas(s.bo2 / 100, s.bhe / 100), decoGases: deco() });
   } else {
-    Object.assign(dive, { mode: "CCR", diluent: ZHL.gas(s.bo2 / 100, s.bhe / 100),
+    Object.assign(dive, { mode: "CCR", diluent: ZHL.gas(s.do2 / 100, s.dhe / 100),
                           sp: { descent: s.sp1, bottom: s.sp2, deco: s.sp3 }, decoGases: deco() });
     if (s.mode === "BAIL") Object.assign(dive, { bailout: true, bottomGas: ZHL.gas(s.bo2 / 100, s.bhe / 100), decoGases: deco() });
   }
@@ -1126,7 +1132,8 @@ function buildDive() {
 
 function showGroups() {
   const m = state.mode;
-  $("bottom-legend").textContent = m === "OC" ? "Bottom gas" : m === "CCR" ? "Diluent" : "Diluent and bailout bottom gas";
+  $("grp-bottom").hidden = m === "CCR";
+  $("bottom-legend").textContent = m === "OC" ? "Bottom gas" : "Bailout bottom gas";
   $("grp-ccr").hidden = m === "OC";
   const ocGas = m !== "CCR" || decoList().length > 0 || state.o2b || state.o2a;
   $("o2b-wrap").hidden = m !== "CCR";
@@ -1374,12 +1381,13 @@ function gasWarnings(P) {
   const add = m => { if (!seen.has(m)) { seen.add(m); out.push(m); } };
   const over = (v, lim) => v > lim + 0.015;
   // bottom gas (OC) or diluent flush (CCR) at every level depth
-  const lv = [[s.depth, s.bo2, s.bhe]].concat(s.extra.map(L => [L[0], s.mode === "OC" ? L[2] : s.bo2, s.mode === "OC" ? L[3] : s.bhe]));
+  const lv = s.mode === "OC" ? [[s.depth, s.bo2, s.bhe]].concat(s.extra.map(L => [L[0], L[2], L[3]]))
+                            : [[s.depth, s.do2, s.dhe]].concat(s.extra.map(L => [L[0], s.do2, s.dhe]));
   const who = s.mode === "OC" ? "Bottom gas" : "Diluent flush with";
   lv.forEach(([d, o2, he]) => {
     const p = mixPO2(o2, d), e = mixEND(he, d), name = mixName(o2, he);
     if (s.mode !== "OC" && over(p, LIMITS.ppo2Bottom)) add(`${who} ${name} at ${d} m: ppO\u2082 ${p.toFixed(2)} bar, above ${LIMITS.ppo2Bottom}.`);
-    if (s.mode !== "OC" && e > LIMITS.end + 0.5) add(`Diluent flush ${name} at ${d} m: END ${Math.round(e)} m (limit ${LIMITS.end} m).`);
+    if (s.mode !== "OC" && e > LIMITS.end + 0.5) add(`Diluent flush ${name} at ${d} m: END is ${Math.round(e)} m.`);
   });
   // OC travel gas at its switch depth, and the bottom gas where it takes over
   if (s.mode === "OC" && s.tg) {
@@ -1400,13 +1408,13 @@ function gasWarnings(P) {
   if (s.mode === "CCR") s.dilSw.forEach(([o2, he, d]) => {
     const p = mixPO2(o2, d), e = mixEND(he, d), name = mixName(o2, he);
     if (over(p, LIMITS.ppo2Deco)) add(`Diluent flush with ${name} at ${d} m: ppO\u2082 ${p.toFixed(2)} bar, above ${LIMITS.ppo2Deco}.`);
-    if (e > LIMITS.end + 0.5) add(`Diluent flush ${name} at ${d} m: END ${Math.round(e)} m (limit ${LIMITS.end} m).`);
+    if (e > LIMITS.end + 0.5) add(`Diluent flush ${name} at ${d} m: END is ${Math.round(e)} m.`);
   });
   // anything in the plan: END deeper than the limit
   const deep = P.rows.filter(r => r.kind !== "Surface" && r.end > LIMITS.end + 0.5);
   if (deep.length) {
     const w = deep.reduce((a, r) => (r.end > a.end ? r : a));
-    if (!out.some(m => m.includes(`at ${w.depth} m: END`))) add(`END ${Math.round(w.end)} m at ${w.depth} m (limit ${LIMITS.end} m).`);
+    if (!out.some(m => m.includes(`at ${w.depth} m: END`))) add(`END is ${Math.round(w.end)} m.`);
   }
   return out.join(" ");
 }
