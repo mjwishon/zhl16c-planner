@@ -163,7 +163,8 @@ tr.minor td { color: var(--muted); }
 td .m { color: var(--muted); }
 td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(--warn-line) 16%, transparent); }
 
-.gasbox { background: var(--surface); border-radius: 8px; padding: 14px 16px; max-width: 440px; display: grid; gap: 8px; }
+.gasbox { background: var(--surface); border-radius: 8px; padding: 14px 16px; max-width: 680px; display: grid; gap: 10px; }
+select.cylsel { font-size: 13px; padding: 3px 6px; }
 .gasbox h2 { font-size: 15px; }
 .gasbox table { min-width: 0; font-size: 13.5px; }
 .gasbox th, .gasbox td { padding: 5px 8px; }
@@ -372,7 +373,11 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
       <section id="sec-gas">
         <div class="gasbox">
           <h2>Gas needed</h2>
-          <table id="gas"></table>
+          <div class="row">
+            <label class="field" for="in-fill"><span>Fill</span><span class="in"><input id="in-fill" type="number" min="50" max="300" step="10">bar</span></label>
+            <label class="field" for="in-minbar"><span>Warn below</span><span class="in"><input id="in-minbar" type="number" min="0" max="200" step="10">bar</span></label>
+          </div>
+          <div class="table-box"><table id="gas"></table></div>
           <p class="hint" id="gas-note">Surface litres at the RMVs set, no reserve added.</p>
         </div>
       </section>
@@ -423,6 +428,8 @@ td.hi { color: var(--ink); font-weight: 500; background: color-mix(in srgb, var(
             <li>CCR diluent changes (optional): on the ascent each listed diluent is used from its depth up, switched like an OC gas (at the depth on the way to the first stop, then on arrival at a stop). The setpoint stays as set.</li>
             <li>CCR oxygen at the last stop (optional, either or both): the last minutes of the loop's last stop on open-circuit oxygen, and extra time on oxygen after the loop clears. The ascent from the last stop is then on oxygen.</li>
             <li>Travel gas (OC, optional): the descent is on the travel gas down to its switch depth (default: its MOD at ppO<sub>2</sub> 1.4), then on the bottom gas. Linked to the deco gases, a change to the travel gas also changes that gas in the deco list.</li>
+            <li>Cylinders: bar used is the surface litres divided by the cylinder water volume (AL80 11.1 L, AL40 5.7 L, twin AL80 22.2 L), from the fill pressure; a cylinder that would end below the warning level (default 50 bar) is flagged.</li>
+            <li>Gas density: the dry gas breathed at that depth, from the densities at 0 °C and 1 atm (O<sub>2</sub> 1.429, N<sub>2</sub> 1.251, He 0.179 g/L); in CCR the loop at its ppO<sub>2</sub> with the rest in the diluent’s N<sub>2</sub> : He ratio. Flagged above 5.2 g/L, the guideline of Anthony and Mitchell (2016).</li>
             <li>Gas alerts (warnings only): ppO<sub>2</sub> above 1.4 bar in the working part of the dive (descent, travel gas, bottom, levels) or above 1.6 bar during the deco; END deeper than 40 m anywhere; for CCR, a diluent flush above 1.4 bar at a level depth, or above 1.6 bar at a diluent change.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
@@ -887,7 +894,7 @@ const DEFAULTS = {
   bo2: 15, bhe: 55, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3,
   // GUE standard deco gases and switch depths: 21/35 at 57 m, 35/25 at 36 m, 50 % at 21 m, O2 at 6 m
   decoOC: [[30, 30, ""], [50, 0, ""], [100, 0, ""]], decoCCR: [], dilSw: [],
-  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 6, deep6: false, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12, tail: 120,
+  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 6, deep6: false, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12, fill: 200, minbar: 50, cyl: {}, tail: 120,
 };
 const NS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
@@ -1014,6 +1021,7 @@ function mixName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).mi
 // ---- inputs -------------------------------------------------------------------------
 const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "tgo2", "tghe", "sp1", "sp2", "sp3", "r1", "r2", "r3", "r4", "ssd", "ssm", "rmvb", "rmvd", "tail", "gf3", "o2bt", "o2at"];
 function writeInputs() {
+  $("in-fill").value = state.fill; $("in-minbar").value = state.minbar;
   NUM.forEach(k => $("in-" + k).value = state[k]);
   $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss; $("in-gf3on").checked = state.gf3on; $("in-o2b").checked = state.o2b; $("in-o2a").checked = state.o2a; $("in-tg").checked = state.tg; $("in-tglink").checked = state.tgLink; $("in-tgd").value = state.tgd;
   ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
@@ -1184,7 +1192,7 @@ function renderPlan(P) {
   const tb = $("plan"); tb.replaceChildren();
   const hr = tb.createTHead().insertRow();
   const showSP = P.rows.some(r => r.ccr);
-  ["", "Depth", "Time", "Runtime", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "END", "GF", "Surf GF"].forEach((t, i) => {
+  ["", "Depth", "Time", "Runtime", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "END", "Density", "GF", "Surf GF"].forEach((t, i) => {
     const th = document.createElement("th"); th.textContent = t; if (i === 4) th.className = "l"; hr.appendChild(th);
   });
   const body = tb.createTBody();
@@ -1204,6 +1212,7 @@ function renderPlan(P) {
       ...(showSP ? [r.ccr && !surf ? r.sp.toFixed(2) : ""] : []),
       showPO2 ? r.po2.toFixed(2) : "",
       surf ? "" : Math.round(r.end) + " m",
+      surf ? "" : rowDensity(r).toFixed(1) + " g/L",
       r.kind === "Stop" && r.gf != null ? Math.round(r.gf * 100) + " %" + (r.gfHold != null ? ` \u2192 ${Math.round(r.gfHold * 100)} %` : "") : "",
       (r.kind === "Stop" || r.kind === "Level" || r.kind === "Safety" || r.kind === "Surface") ? Math.round(r.surfGf * 100) + " %" : "",
     ];
@@ -1214,30 +1223,61 @@ function renderPlan(P) {
       const work = r.rt <= P.tAscent + 1e-6;
       if (i === po2Col && showPO2 && (r.po2 < 0.16 || (work ? r.po2 > LIMITS.ppo2Bottom + 0.015 : r.po2Limit > LIMITS.ppo2Deco + 1e-9))) td.className = "hi";
       if (i === po2Col + 1 && !surf && r.end > LIMITS.end + 0.5) td.className = "hi";
+      if (i === po2Col + 2 && !surf && overDensity(r)) td.className = "hi";
     });
   });
 }
 
 // ---- gas box ---------------------------------------------------------------------------
+// ---- cylinders ---------------------------------------------------------------------------
+// water volume in litres; bar used = surface litres / water volume (no reserve)
+const CYL = { "2xAL80": ["2× AL80", 22.2], "2x12": ["2× 12 L", 24], "2x10": ["2× 10 L", 20],
+              "AL80": ["AL80", 11.1], "AL40": ["AL40", 5.7] };
+function cylFor(mix) {
+  if (state.cyl[mix]) return state.cyl[mix];
+  const bottom = ZHL.gas(state.bo2 / 100, state.bhe / 100).mix;
+  return state.mode === "OC" && mix === bottom ? "2xAL80" : "AL80";   // OC: twinset for the bottom gas
+}
+function cylRows(P) {
+  return P.gasUse.map(u => {
+    const c = cylFor(u.gas.mix), used = u.litres / CYL[c][1];
+    return { u, c, used, left: state.fill - used };
+  });
+}
+function cylWarnings(P) {
+  if (!P.gasUse.length) return "";
+  return cylRows(P).filter(r => r.left < state.minbar)
+    .map(r => `${r.u.gas.label} (${CYL[r.c][0]}): ${Math.round(r.left)} bar left.`).join(" ");
+}
 function renderGas(P) {
   const tb = $("gas"); tb.replaceChildren();
   if (!P.gasUse.length) return;
   const hr = tb.createTHead().insertRow();
-  ["Gas", "Time", "Litres"].forEach(t => { const th = document.createElement("th"); th.textContent = t; hr.appendChild(th); });
+  ["Gas", "Time", "Litres", "Cylinder", "Bar used", "Bar left"].forEach((t, i) => { const th = document.createElement("th"); th.textContent = t; if (i === 3) th.className = "l"; hr.appendChild(th); });
   const body = tb.createTBody();
   let total = 0;
-  P.gasUse.forEach(u => {
+  cylRows(P).forEach(r => {
     const tr = body.insertRow();
-    [u.gas.label, Math.round(u.minutes) + " min", Math.round(u.litres).toLocaleString("en-US")].forEach((c, i) => {
-      const td = tr.insertCell(); td.textContent = c; if (i === 0) td.className = "l";
+    const cells = [r.u.gas.label, Math.round(r.u.minutes) + " min", Math.round(r.u.litres).toLocaleString("en-US"), null,
+                   Math.round(r.used), Math.round(r.left)];
+    cells.forEach((c, i) => {
+      const td = tr.insertCell();
+      if (i === 3) {
+        td.className = "l";
+        const sel = document.createElement("select"); sel.className = "cylsel"; sel.dataset.mix = r.u.gas.mix;
+        sel.setAttribute("aria-label", `Cylinder for ${r.u.gas.label}`);
+        Object.entries(CYL).forEach(([k, [name, wv]]) => { const o = document.createElement("option"); o.value = k; o.textContent = `${name} (${wv} L)`; sel.appendChild(o); });
+        sel.value = r.c; td.appendChild(sel);
+      } else td.textContent = c;
+      if (i === 0) td.className = "l";
+      if (i === 5 && r.left < state.minbar) td.className = "hi";
     });
-    total += u.litres;
+    total += r.u.litres;
   });
   const tr = tb.createTFoot().insertRow();
-  ["Total", "", Math.round(total).toLocaleString("en-US")].forEach((c, i) => { const td = tr.insertCell(); td.textContent = c; if (i === 0) td.className = "l"; });
-  $("gas-note").textContent = state.mode === "BAIL"
-    ? `Open-circuit bailout from the end of the bottom. Surface litres at ${state.rmvb} / ${state.rmvd} L/min, no reserve added.`
-    : `Surface litres at ${state.rmvb} / ${state.rmvd} L/min, no reserve added.`;
+  ["Total", "", Math.round(total).toLocaleString("en-US"), "", "", ""].forEach((c, i) => { const td = tr.insertCell(); td.textContent = c; if (i === 0) td.className = "l"; });
+  const base = `Surface litres at ${state.rmvb} / ${state.rmvd} L/min, no reserve added. Bar used = litres ÷ cylinder water volume.`;
+  $("gas-note").textContent = state.mode === "BAIL" ? "Open-circuit bailout from the end of the bottom. " + base : base;
 }
 
 // ---- tooltip --------------------------------------------------------------------------
@@ -1377,7 +1417,32 @@ function travelAuto() { const o2 = state.tgo2, he = state.tghe; if (!(o2 >= 5 &&
 function travelSwitch() { return state.tgd !== "" ? Number(state.tgd) : travelAuto(); }
 
 // ---- gas alerts (warnings only; the plan is always computed) -----------------------------
-const LIMITS = { end: 40, ppo2Bottom: 1.4, ppo2Deco: 1.6 };
+const LIMITS = { end: 40, ppo2Bottom: 1.4, ppo2Deco: 1.6, density: 5.2 };
+// gas density (g/L) of the dry gas breathed at the row depth, from the densities at 0 °C and
+// 1 atm. CCR: the loop at its ppO2 with the rest in the diluent's N2 : He ratio.
+const DENS = { O2: 1.429, N2: 1.251, He: 0.1786 };
+function rowDensity(r) {
+  const P = ZHL.DEFAULTS.Psurf + r.depth / 10, g = r.gas;
+  let pO2 = P * g.FO2, pN2 = P * g.FN2, pHe = P * g.FHe;
+  if (r.ccr) {
+    const inert = g.FN2 + g.FHe;
+    pO2 = inert > 0 ? Math.min(r.po2, P) : P;
+    pN2 = inert > 0 ? (P - pO2) * g.FN2 / inert : 0;
+    pHe = inert > 0 ? (P - pO2) * g.FHe / inert : 0;
+  }
+  return (pO2 * DENS.O2 + pN2 * DENS.N2 + pHe * DENS.He) / 1.01325;
+}
+function overDensity(r) { return Math.round(rowDensity(r) * 10) / 10 > LIMITS.density; }
+function densityWarning(P) {
+  const hi = P.rows.filter(r => r.kind !== "Surface" && overDensity(r));
+  if (!hi.length) return "";
+  const w = hi.reduce((a, r) => (rowDensity(r) > rowDensity(a) ? r : a));
+  const name = w.ccr ? "the loop on " + w.gas.mix : w.gas.label;
+  return `Gas density reaches ${rowDensity(w).toFixed(1)} g/L at ${w.depth} m (${name}), above ${LIMITS.density} g/L.`;
+}
+function allWarnings(P) {
+  return [gasWarnings(P), oxygenWarnings(P), densityWarning(P), levelWarning(P), cylWarnings(P)].filter(Boolean).join(" ");
+}
 function mixPO2(o2, d) { return o2 / 100 * (ZHL.DEFAULTS.Psurf + d / 10); }
 function mixEND(he, d) { const P = ZHL.DEFAULTS.Psurf + d / 10; return Math.max(0, (P * (1 - he / 100) - ZHL.DEFAULTS.Psurf) * 10); }
 function gasWarnings(P) {
@@ -1522,7 +1587,7 @@ function update() {
   let P;
   try { P = ZHL.plan(buildDive()); }
   catch (e) { showMsg(e.message + " Showing the last valid plan."); return; }
-  showMsg([gasWarnings(P), oxygenWarnings(P), levelWarning(P)].filter(Boolean).join(" "));
+  showMsg(allWarnings(P));
   current = { P, depth: Math.max(state.depth, ...state.extra.map(L => L[0])), gfhi: state.gfhi, gf3: state.gf3on ? state.gf3 : null };
   renderSummary(P); renderPlan(P); renderGas(P); drawCharts();
 }
@@ -1578,6 +1643,14 @@ $("controls").addEventListener("input", ev => {
   clearTimeout(deb); deb = setTimeout(update, 120);
 });
 $("controls").addEventListener("submit", e => e.preventDefault());
+// cylinders, fill pressure and the warning level live in the gas box
+$("sec-gas").addEventListener("input", ev => {
+  const t = ev.target;
+  if (t.classList.contains("cylsel")) state.cyl[t.dataset.mix] = t.value;
+  if (t.id === "in-fill") state.fill = Number(t.value);
+  if (t.id === "in-minbar") state.minbar = Number(t.value);
+  if (current && state.fill > 0) { renderGas(current.P); showMsg(allWarnings(current.P)); }
+});
 // re-sort the deco gases once an O2 or He value has been entered (not while typing)
 $("controls").addEventListener("change", ev => {
   const t = ev.target;

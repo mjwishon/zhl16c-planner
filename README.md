@@ -30,8 +30,8 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 
 - Gas alerts (warnings only): ppO2 above 1.4 or END deeper than 40 m for the bottom gas or a diluent flush; above 1.6 or END 40 m for deco gases at their switch depth
 
-- The dive plan as a runtime table (depth, stop time, runtime, gas, setpoint, ppO₂, END, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
-- Gas needed per open-circuit gas, in surface litres
+- The dive plan as a runtime table (depth, stop time, runtime, gas, setpoint, ppO₂, END, gas density, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
+- Gas needed per open-circuit gas: surface litres, cylinder (default twin AL80 for the OC bottom gas, AL80 for travel and deco; AL40 and others selectable), bar used and bar left from a 200 bar fill, flagged below 50 bar
 - The profile with the decompression ceiling
 - A bar chart of all 16 compartments on surfacing, showing how close each is to its M-value and which one leads
 - Nitrogen and helium pressure in each compartment over the dive and after surfacing (line graphs; time after surfacing is adjustable, default 2 hours)
@@ -49,6 +49,7 @@ After the first visit it also works offline.
 - ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water at 10 m per bar.
 - CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.
 - END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas.
+- Gas density: the dry gas breathed at depth (0 °C, 1 atm densities); in CCR the loop at its ppO₂. Flagged above 5.2 g/L.
 - Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level.
 - No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no stops (can be switched off).
 - First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid. It moves one stop deeper if the ascent would already violate it (Baker's projected ascent).
