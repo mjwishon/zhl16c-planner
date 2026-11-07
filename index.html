@@ -367,7 +367,7 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
       <section>
         <div class="sec-head">
           <h2>Dive plan</h2>
-          <p>Stop times include the travel from the previous stop. Runtime is in whole minutes. Surf GF is the gradient factor you would surface with if you left at that point; on the Surface row it is the GF you arrive with.</p>
+          <p>Stop times include the travel from the previous stop. Runtime is in whole minutes. TTS is the time to surface from the end of that row: during the ascent, the plan time still to go; at the end of the bottom or a level, a direct ascent from there. Surf GF is the gradient factor you would surface with if you left at that point; on the Surface row it is the GF you arrive with.</p>
         </div>
         <div class="table-box"><table id="plan"></table></div>
       </section>
@@ -1200,11 +1200,24 @@ function renderPlan(P) {
   const tb = $("plan"); tb.replaceChildren();
   const hr = tb.createTHead().insertRow();
   const showSP = P.rows.some(r => r.ccr);
-  ["", "Depth", "Time", "Runtime", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "END", "Density", "GF", "Surf GF"].forEach((t, i) => {
-    const th = document.createElement("th"); th.textContent = t; if (i === 4) th.className = "l"; hr.appendChild(th);
+  ["", "Depth", "Time", "Runtime", "TTS", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", "END", "Density", "GF", "Surf GF"].forEach((t, i) => {
+    const th = document.createElement("th"); th.textContent = t; if (i === 5) th.className = "l"; hr.appendChild(th);
   });
   const body = tb.createTBody();
   const nLevels = P.rows.filter(r => r.kind === "Level").length;
+  // TTS (whole minutes, so Runtime + TTS = the surfacing runtime). During the ascent: the plan time
+  // still to go. At the end of the bottom or of a level: a direct ascent planned from there.
+  const minOf = s => Math.floor(s / 60 + 1e-9), surfMin = minOf(P.tSurface);
+  let levelNo = 0;
+  const tts = r => {
+    if (r.kind === "Surface") return "";
+    if (r.rt > P.tAscent + 1e-6) return String(surfMin - minOf(r.rt));
+    if (r.kind !== "Level") return "";
+    const k = levelNo++;
+    if (k === nLevels - 1) return String(surfMin - minOf(r.rt));
+    try { const d = buildDive(); d.levels = d.levels.slice(0, k); return String(minOf(ZHL.plan(d).tSurface) - minOf(r.rt)); }
+    catch (e) { return ""; }
+  };
   const WHAT = { Dec: "Descend to", Level: nLevels > 1 ? "Level" : "Bottom", Asc: "Ascend to", Stop: "Stop", Safety: "Safety stop", Surface: "Surface" };
   P.rows.forEach(r => {
     const tr = body.insertRow();
@@ -1216,6 +1229,7 @@ function renderPlan(P) {
       surf ? "" : r.depth + " m",
       r.dur == null ? "" : mmss(r.dur),
       String(Math.floor(r.rt / 60 + 1e-9)),
+      tts(r),
       r.ccr ? "Diluent " + r.gas.mix : r.gas.label,
       ...(showSP ? [r.ccr && !surf ? r.sp.toFixed(2) : ""] : []),
       showPO2 ? r.po2.toFixed(2) : "",
@@ -1224,10 +1238,10 @@ function renderPlan(P) {
       r.kind === "Stop" && r.gf != null ? Math.round(r.gf * 100) + " %" + (r.gfHold != null ? ` \u2192 ${Math.round(r.gfHold * 100)} %` : "") : "",
       (r.kind === "Stop" || r.kind === "Level" || r.kind === "Safety" || r.kind === "Surface") ? Math.round(r.surfGf * 100) + " %" : "",
     ];
-    const po2Col = showSP ? 6 : 5;
+    const po2Col = showSP ? 7 : 6;
     cells.forEach((c, i) => {
       const td = tr.insertCell(); td.textContent = c;
-      if (i === 4) td.className = "l";
+      if (i === 5) td.className = "l";
       const work = r.rt <= P.tAscent + 1e-6;
       if (i === po2Col && showPO2 && (r.po2 < 0.16 || (work ? r.po2 > LIMITS.ppo2Bottom + 0.015 : r.po2Limit > LIMITS.ppo2Deco + 1e-9))) td.className = "hi";
       if (i === po2Col + 1 && !surf && r.end > LIMITS.end + 0.5) td.className = "hi";

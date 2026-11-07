@@ -30,7 +30,7 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 
 - Gas alerts (warnings only): ppO2 above 1.4 or END deeper than 40 m for the bottom gas or a diluent flush; above 1.6 or END 40 m for deco gases at their switch depth
 
-- The dive plan as a runtime table (depth, stop time, runtime, gas, setpoint, ppO₂, END, gas density, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
+- The dive plan as a runtime table (depth, stop time, runtime, TTS (time to surface), gas, setpoint, ppO₂, END, gas density, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
 - Gas needed per open-circuit gas: surface litres, cylinder (default twin AL80 for the OC bottom gas, AL80 for travel and deco; AL40 and others selectable), bar used and bar left from a 200 bar fill, flagged below 50 bar
 - The profile with the decompression ceiling
 - A bar chart of all 16 compartments on surfacing, showing how close each is to its M-value and which one leads
