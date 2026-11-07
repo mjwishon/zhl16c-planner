@@ -49,6 +49,7 @@ After the first visit it also works offline.
 - ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water at 10 m per bar.
 - CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.
 - END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas.
+- Eliminate Helium Penalty (CCR and bailout, for education only): decompression counts helium as nitrogen; END, ppO₂ and gas density use the real mix.
 - Gas density: the dry gas breathed at depth (0 °C, 1 atm densities); in CCR the loop at its ppO₂. Flagged above 5.2 g/L.
 - Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the GF-low ceiling is never crossed; deco is planned from the end of the last level.
 - No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no stops (can be switched off).

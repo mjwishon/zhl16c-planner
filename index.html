@@ -297,6 +297,8 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
           <label class="field" for="in-sp2"><span>SP bottom</span><span class="in"><input id="in-sp2" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
           <label class="field" for="in-sp3"><span>SP deco</span><span class="in"><input id="in-sp3" type="number" min="0.4" max="1.6" step="0.05">bar</span></label>
         </div>
+        <label class="check" for="in-nohe"><input id="in-nohe" type="checkbox"> Eliminate Helium Penalty (FOR EDUCATION ONLY)</label>
+        <p class="hint">Decompression counts all helium as nitrogen. END, ppO<sub>2</sub> and gas density still use the real mix.</p>
         <div id="dsw-wrap" class="levels">
           <p class="hint">Diluent changes on the ascent: each new diluent is used from its depth up.</p>
           <div class="levels" id="dilsw"></div>
@@ -429,6 +431,7 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
             <li>CCR oxygen at the last stop (optional, either or both): the last minutes of the loop's last stop on open-circuit oxygen, and extra time on oxygen after the loop clears. The ascent from the last stop is then on oxygen.</li>
             <li>Travel gas (OC, optional): the descent is on the travel gas down to its switch depth (default: its MOD at ppO<sub>2</sub> 1.4), then on the bottom gas. Linked to the deco gases, a change to the travel gas also changes that gas in the deco list.</li>
             <li>Cylinders: bar used is the surface litres divided by the cylinder water volume (AL80 11.1 L, AL40 5.7 L, twin AL80 22.2 L), from the fill pressure; a cylinder that would end below the warning level (default 50 bar) is flagged.</li>
+            <li>Eliminate Helium Penalty (CCR and bailout, for education only): the compartments take up helium as if it were nitrogen (nitrogen half-times and a/b values), so the decompression is planned for an O<sub>2</sub>/N<sub>2</sub> mix. END, ppO<sub>2</sub>, gas density and gas volumes use the real mix.</li>
             <li>Gas density: the dry gas breathed at that depth, from the densities at 0 °C and 1 atm (O<sub>2</sub> 1.429, N<sub>2</sub> 1.251, He 0.179 g/L); in CCR the loop at its ppO<sub>2</sub> with the rest in the diluent’s N<sub>2</sub> : He ratio. Flagged above 5.2 g/L, the guideline of Anthony and Mitchell (2016).</li>
             <li>Gas alerts (warnings only): ppO<sub>2</sub> above 1.4 bar in the working part of the dive (descent, travel gas, bottom, levels) or above 1.6 bar during the deco; END deeper than 40 m anywhere; for CCR, a diluent flush above 1.4 bar at a level depth, or above 1.6 bar at a diluent change.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
@@ -580,16 +583,20 @@ const ZHL = (() => {
       if (fi <= 1e-12) return [0, 0, pO2];
       return [inert * g.FN2 / fi, inert * g.FHe / fi, pO2];
     }
+    // optional (CCR and bailout): the compartments load helium as if it were nitrogen, so the
+    // helium penalty is gone. END, ppO2 and the gas use still come from the real mix.
+    const noHe = ccr && !!opt.noHePenalty;
+    function tissueInspired(b, P) { const x = inspired(b, P); return noHe ? [x[0] + x[1], 0, x[2]] : x; }
     function travel(T, dTo, rate, b) {
       const d0 = T.d, dist = Math.abs(dTo - d0);
       if (dist < 1e-12) return;
       const dur = dist / rate * 60, n = Math.max(1, Math.ceil(dur / opt.dtTravel - 1e-9)), h = dur / n;
       const eN = KN2.map(k => Math.exp(-k * h)), eH = KHE.map(k => Math.exp(-k * h));
-      let [a2, ah] = inspired(b, pamb(d0));
+      let [a2, ah] = tissueInspired(b, pamb(d0));
       const t0 = T.t;
       for (let i = 1; i <= n; i++) {
         const d1 = d0 + (dTo - d0) * i / n;
-        const [b2, bh] = inspired(b, pamb(d1));
+        const [b2, bh] = tissueInspired(b, pamb(d1));
         const R2 = (b2 - a2) / h, Rh = (bh - ah) / h;
         for (let c = 0; c < 16; c++) {
           T.PN2[c] = a2 + R2 * (h - 1 / KN2[c]) - (a2 - T.PN2[c] - R2 / KN2[c]) * eN[c];
@@ -604,7 +611,7 @@ const ZHL = (() => {
     function hold(T, dur, b) {
       if (dur <= 1e-12) return;
       const n = T.rec ? Math.max(1, Math.ceil(dur / opt.dtHold - 1e-9)) : 1, h = dur / n;
-      const [p2, ph] = inspired(b, pamb(T.d));
+      const [p2, ph] = tissueInspired(b, pamb(T.d));
       const eN = KN2.map(k => Math.exp(-k * h)), eH = KHE.map(k => Math.exp(-k * h));
       const t0 = T.t;
       useGas(T, b, opt.gasPsurf + T.d / opt.gasMPerBar, dur);
@@ -894,7 +901,7 @@ const DEFAULTS = {
   bo2: 12, bhe: 65, do2: 12, dhe: 65, sp1: 0.7, sp2: 1.2, sp3: 1.3,
   // default gases: travel 18/45 to 30 m, bottom 12/65, deco 18/45 (linked to the travel gas), EAN50, O2
   decoOC: [[18, 45, ""], [50, 0, ""], [100, 0, ""]], decoCCR: [], dilSw: [],
-  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 6, deep6: false, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12, fill: 200, minbar: 50, cyl: {}, tail: 120,
+  r1: 20, r2: 6, r3: 3, r4: 3, inc: 3, last: 6, deep6: false, nodeco: true, ss: true, ssd: 5, ssm: 3, rmvb: 15, rmvd: 12, nohe: false, fill: 200, minbar: 50, cyl: {}, tail: 120,
 };
 const NS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
@@ -1023,7 +1030,7 @@ const NUM = ["depth", "rt", "gflo", "gfhi", "bo2", "bhe", "do2", "dhe", "tgo2", 
 function writeInputs() {
   $("in-fill").value = state.fill; $("in-minbar").value = state.minbar;
   NUM.forEach(k => $("in-" + k).value = state[k]);
-  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss; $("in-gf3on").checked = state.gf3on; $("in-o2b").checked = state.o2b; $("in-o2a").checked = state.o2a; $("in-tg").checked = state.tg; $("in-tglink").checked = state.tgLink; $("in-tgd").value = state.tgd;
+  $("in-inc").value = String(state.inc); $("in-last").value = String(state.last); $("in-deep6").checked = state.deep6; $("in-nodeco").checked = state.nodeco; $("in-ss").checked = state.ss; $("in-gf3on").checked = state.gf3on; $("in-o2b").checked = state.o2b; $("in-o2a").checked = state.o2a; $("in-tg").checked = state.tg; $("in-tglink").checked = state.tgLink; $("in-tgd").value = state.tgd; $("in-nohe").checked = state.nohe;
   ({ OC: $("mode-oc"), CCR: $("mode-ccr"), BAIL: $("mode-bail") })[state.mode].checked = true;
   state.extra = state.extra || [];
   state.dilSw = state.dilSw || [];
@@ -1072,7 +1079,7 @@ function gasName(o2, he) { return o2 > 0 ? ZHL.gas(o2 / 100, (he || 0) / 100).la
 function readInputs() {
   const m = document.querySelector('input[name="mode"]:checked'); state.mode = m ? m.value : "OC";
   NUM.forEach(k => state[k] = Number($("in-" + k).value));
-  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked; state.ss = $("in-ss").checked; state.gf3on = $("in-gf3on").checked; state.o2b = $("in-o2b").checked; state.o2a = $("in-o2a").checked; state.tg = $("in-tg").checked; state.tgLink = $("in-tglink").checked; state.tgd = $("in-tgd").value;
+  state.inc = Number($("in-inc").value); state.last = Number($("in-last").value); state.deep6 = $("in-deep6").checked; state.nodeco = $("in-nodeco").checked; state.ss = $("in-ss").checked; state.gf3on = $("in-gf3on").checked; state.o2b = $("in-o2b").checked; state.o2a = $("in-o2a").checked; state.tg = $("in-tg").checked; state.tgLink = $("in-tglink").checked; state.tgd = $("in-tgd").value; state.nohe = $("in-nohe").checked;
 }
 
 function validate() {
@@ -1127,7 +1134,8 @@ function buildDive() {
     levels: s.extra.map(([d, tm, o2, he]) => (s.mode === "OC" ? { depth: d, time: tm, gas: ZHL.gas(o2 / 100, he / 100) } : { depth: d, time: tm })),
     settings: { descent: s.r1, ascent: s.r2, deco: s.r3, surface: s.r4, stopInc: s.inc,
                 lastStopOC: s.last, lastStopCCR: s.last, sixMetreDeep: s.deep6, noDecoCheck: s.nodeco,
-                safetyStop: s.ss, safetyDepth: s.ssd, safetyTime: s.ssm, rmvBottom: s.rmvb, rmvDeco: s.rmvd, surfaceTail: s.tail },
+                safetyStop: s.ss, safetyDepth: s.ssd, safetyTime: s.ssm, rmvBottom: s.rmvb, rmvDeco: s.rmvd, surfaceTail: s.tail,
+                noHePenalty: s.mode !== "OC" && s.nohe },
   };
   const deco = () => decoList().map(g => ZHL.gas(g[0] / 100, g[1] / 100,
     g[2] === "" ? { deco: true } : { deco: true, switch_m: Number(g[2]) }));
@@ -1441,7 +1449,8 @@ function densityWarning(P) {
   return `Gas density reaches ${rowDensity(w).toFixed(1)} g/L at ${w.depth} m (${name}), above ${LIMITS.density} g/L.`;
 }
 function allWarnings(P) {
-  return [gasWarnings(P), oxygenWarnings(P), densityWarning(P), levelWarning(P), cylWarnings(P)].filter(Boolean).join(" ");
+  const noHe = state.mode !== "OC" && state.nohe ? "Helium penalty eliminated: decompression counts helium as nitrogen (education only)." : "";
+  return [noHe, gasWarnings(P), oxygenWarnings(P), densityWarning(P), levelWarning(P), cylWarnings(P)].filter(Boolean).join(" ");
 }
 function mixPO2(o2, d) { return o2 / 100 * (ZHL.DEFAULTS.Psurf + d / 10); }
 function mixEND(he, d) { const P = ZHL.DEFAULTS.Psurf + d / 10; return Math.max(0, (P * (1 - he / 100) - ZHL.DEFAULTS.Psurf) * 10); }
