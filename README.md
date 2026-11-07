@@ -15,7 +15,10 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 - In CCR, optional open-circuit deco gases (you stay on the loop until the first one's switch depth)
 - In CCR, optional diluent changes on the ascent (e.g. 21/35 from 36 m, 50 % from 21 m); the loop keeps the setpoint and the new diluent sets the inert gas mix
 - In CCR, optional open-circuit oxygen at the last stop, either or both: for the last minutes of the stop, and extra time after the loop clears (each 15 min by default)
-- Bottom gas, or diluent and setpoints (descent, bottom, deco), and the bailout gas
+- One bottom gas, used as the OC bottom gas, the CCR diluent and the bailout bottom gas (default 12/65), and setpoints (descent, bottom, deco)
+- Defaults for every mode: 80 m for 25 min, GF 30/70, GUE standard deco gases (21/35 from 57 m, 35/25 from 36 m, 50 % from 21 m, O2 from 6 m)
+- Travel gas for open circuit (on by default: 21/35, switching to the bottom gas at 57 m)
+- Gas lists offer GUE standard mixes, or Custom for any O2/He
 - Up to five deco or bailout gases, each with a default or custom switch depth
 - Descent rate, ascent rate to the first stop, rate between stops, and rate to the surface
 - Stop spacing, last stop depth (any depth from 1 to 9 m, default 6 m), and 6 m spacing for stops deeper than 30 m (off by default)
@@ -24,6 +27,8 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 - Safety stop on no-deco dives, with its depth and time (on by default, 3 min at 5 m)
 
 ## What it shows
+
+- Gas alerts (warnings only): ppO2 above 1.4 or END deeper than 40 m for the bottom gas or a diluent flush; above 1.6 or END 40 m for deco gases at their switch depth
 
 - The dive plan as a runtime table (depth, stop time, runtime, gas, setpoint, ppO₂, END, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
 - Gas needed per open-circuit gas, in surface litres
