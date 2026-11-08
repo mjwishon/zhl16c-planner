@@ -366,6 +366,7 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
     </form>
 
     <div class="results">
+      <p class="msg crit" id="msg-red" role="status" hidden></p>
       <p class="msg" id="msg" role="status" hidden></p>
       <div class="summary" id="summary"></div>
 
@@ -439,7 +440,7 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
             <li>Cylinders: bar used is the surface litres divided by the cylinder water volume (AL80 11.1 L, AL40 5.7 L, twin AL80 22.2 L), from the fill pressure; a cylinder that would end below the warning level (default 50 bar) is flagged yellow, and below 20 bar red.</li>
             <li>Eliminate Helium Penalty (CCR and bailout, for education only): the compartments take up helium as if it were nitrogen (nitrogen half-times and a/b values), so the decompression is planned for an O<sub>2</sub>/N<sub>2</sub> mix. END, ppO<sub>2</sub>, gas density and gas volumes use the real mix.</li>
             <li>Gas density: the dry gas breathed at that depth, from the densities at 0 °C and 1 atm (O<sub>2</sub> 1.429, N<sub>2</sub> 1.251, He 0.179 g/L); in CCR the loop at its ppO<sub>2</sub> with the rest in the diluent’s N<sub>2</sub> : He ratio. Flagged yellow above 5.2 g/L and red above 6.2 g/L, the recommended and maximum limits of Anthony and Mitchell (2016).</li>
-            <li>Gas alerts (warnings only): ppO<sub>2</sub> above 1.4 bar in the working part of the dive (descent, travel gas, bottom, levels) or above 1.6 bar during the deco (stops and moves between levels count as deco, and so does a shallower level breathed on a deco gas, as an extended deco stop); END deeper than 40 m anywhere; for CCR, a diluent flush above 1.0 bar; gas density above 5.2 g/L; a cylinder below the warning level. One line per problem, at its worst point. The box turns red when anything in the plan or the cylinders is red.</li>
+            <li>Gas alerts (warnings only): ppO<sub>2</sub> above 1.4 bar in the working part of the dive (descent, travel gas, bottom, levels) or above 1.6 bar during the deco (stops and moves between levels count as deco, and so does a shallower level breathed on a deco gas, as an extended deco stop); END deeper than 40 m anywhere; for CCR, a diluent flush above 1.0 bar; gas density above 5.2 g/L; a cylinder below the warning level. One line per problem, at its worst point. Red problems show in a red bar, the rest in a yellow bar below it.</li>
             <li>No-deco limit: if a direct ascent keeps every compartment within GF high on surfacing, the plan has no deco stops. The optional safety stop is added after that check.</li>
             <li>First stop: GF-low ceiling at the end of the bottom, rounded up to the stop grid, moved one stop deeper if the ascent would already violate it (Baker's projected ascent).</li>
             <li>Each stop is held to the next whole minute, then a minute at a time until the ceiling at the next stop's GF is within 1 cm of the next stop. GF rises linearly with depth from GF low at the first stop to GF high at the surface.</li>
@@ -974,12 +975,12 @@ function lineKey(color, dash) {
   l.style.stroke = "var(" + color + ")"; if (dash) l.setAttribute("stroke-dasharray", dash);
   return svg;
 }
-// message box: a plain string, or warning lines { t, red }; red turns the box red
-function showMsg(w, red = false) {
-  const m = $("msg"), lines = typeof w === "string" ? (w ? [{ t: w }] : []) : w;
-  m.replaceChildren(...lines.map(x => h("span", null, x.t)));
-  m.classList.toggle("crit", red || lines.some(x => x.red));
-  m.hidden = !lines.length;
+// warning bars: a plain string (yellow bar), or lines { t, red }: red lines in the red bar, the rest in the yellow bar
+function showMsg(w) {
+  const lines = typeof w === "string" ? (w ? [{ t: w }] : []) : w;
+  [["msg-red", lines.filter(x => x.red)], ["msg", lines.filter(x => !x.red)]].forEach(([id, ls]) => {
+    const m = $(id); m.replaceChildren(...ls.map(x => h("span", null, x.t))); m.hidden = !ls.length;
+  });
 }
 
 // ---- gas presets: GUE standard mixes, or Custom ------------------------------------------
@@ -1254,8 +1255,8 @@ function renderSummary(P) {
 function renderPlan(P) {
   const tb = $("plan"); tb.replaceChildren();
   const hr = tb.createTHead().insertRow();
-  const showSP = P.rows.some(r => r.ccr);
-  ["", "Depth", "Time", "Runtime", "TTS", "Gas", ...(showSP ? ["SP"] : []), "ppO₂", ...(showSP ? ["Flush"] : []), "END", "Density", "GF", "Surf GF"].forEach((t, i) => {
+  const ccr = P.rows.some(r => r.ccr);
+  ["", "Depth", "Time", "Runtime", "TTS", "Gas", "ppO₂", ...(ccr ? ["Flush"] : []), "END", "Density", "GF", "Surf GF"].forEach((t, i) => {
     const th = document.createElement("th"); th.textContent = t; if (i === 5) th.className = "l";
     if (t === "Flush") th.title = "ppO₂ of a diluent flush at that depth (diluent O₂ × ambient pressure)";
     hr.appendChild(th);
@@ -1289,20 +1290,20 @@ function renderPlan(P) {
       String(Math.floor(r.rt / 60 + 1e-9)),
       tts(r),
       r.ccr ? "Diluent " + r.gas.mix : r.gas.label,
-      ...(showSP ? [r.ccr && !surf ? r.sp.toFixed(2) : ""] : []),
       showPO2 ? r.po2.toFixed(2) : "",
-      ...(showSP ? [r.ccr && !surf ? flushPO2(r).toFixed(2) : ""] : []),
+      ...(ccr ? [r.ccr && !surf ? flushPO2(r).toFixed(2) : ""] : []),
       surf ? "" : Math.round(r.end) + " m",
       surf ? "" : rowDensity(r).toFixed(1) + " g/L",
       r.kind === "Stop" && r.gf != null ? Math.round(r.gf * 100) + " %" + (r.gfHold != null ? ` \u2192 ${Math.round(r.gfHold * 100)} %` : "") : "",
       (r.kind === "Stop" || r.kind === "Level" || r.kind === "Safety" || r.kind === "Surface") ? Math.round(r.surfGf * 100) + " %" : "",
     ];
-    const po2Col = showSP ? 7 : 6, endCol = po2Col + (showSP ? 2 : 1), fl = rowFlags(r, wf[ri]);
+    const po2Col = 6, endCol = po2Col + (ccr ? 2 : 1), fl = rowFlags(r, wf[ri]);
     cells.forEach((c, i) => {
       const td = tr.insertCell(); td.textContent = c;
       if (i === 5) td.className = "l";
       if (i === po2Col && showPO2 && fl.po2) td.className = fl.po2;
-      if (showSP && i === po2Col + 1 && fl.flush) td.className = fl.flush;
+      if (i === po2Col && r.ccr && !surf) td.title = `Setpoint ${r.sp.toFixed(2)} bar`;
+      if (ccr && i === po2Col + 1 && fl.flush) td.className = fl.flush;
       if (i === endCol && fl.end) td.className = fl.end;
       if (i === endCol + 1 && fl.dens) td.className = fl.dens;
     });
@@ -1536,21 +1537,17 @@ function rowFlags(r, work) {
   const dens = overDensity(r, LIMITS.densityMax) ? "crit" : overDensity(r) ? "hi" : "";
   return { po2, flush: flushFlag(flushPO2(r)), end, dens };
 }
-function planRed(P) {
-  const wf = workFlags(P);
-  return P.rows.some((r, i) => Object.values(rowFlags(r, wf[i])).includes("crit"));
-}
 // worst item; on a tie the later one (the bottom rather than the descent to it)
 const worstBy = (list, f) => list.reduce((a, x) => (!a || f(x) >= f(a) ? x : a), null);
 
-// Warnings: one short line per problem (the worst case), as { t, red }. Red lines first; any red turns the box red.
+// Warnings: one short line per problem (the worst case), as { t, red }. Red lines go in the red bar, the rest in the yellow bar.
 function allWarnings(P) {
   const out = [];
   if (state.mode !== "OC" && state.nohe) out.push({ t: "Helium penalty eliminated: decompression counts helium as nitrogen (education only)." });
   out.push(...oxygenWarnings(P), ...gasWarnings(P), ...densityWarning(P), ...levelWarning(P), ...cylWarnings(P));
-  return out.filter(w => w.red).concat(out.filter(w => !w.red));
+  return out;
 }
-function showWarnings(P) { showMsg(allWarnings(P), planRed(P) || cylRows(P).some(r => r.left < LIMITS.barMin)); }
+function showWarnings(P) { showMsg(allWarnings(P)); }
 function densityWarning(P) {
   const wf = workFlags(P), w = worstBy(P.rows.filter(r => r.kind !== "Surface"), rowDensity);
   if (!w || !overDensity(w)) return [];
@@ -1570,12 +1567,17 @@ function gasWarnings(P) {
       if (p < 0.16) out.push({ t: `Bottom gas ${mixName(s.bo2, s.bhe)} is hypoxic at the ${sw} m switch (ppO₂ ${p.toFixed(2)} bar).` });
     }
   }
-  // diluent flush: every loop row in the plan, and each CCR diluent change at its change depth
+  // diluent flush: every loop row in the plan, and each CCR diluent change at its change depth (deco setpoint).
+  // sp: the setpoint held there (not on the descent, which runs on the low setpoint)
+  const held = r => r.kind === "Level" || r.kind === "Stop" || r.kind === "Safety";
   const fl = P.rows.filter(r => r.ccr && r.kind !== "Surface")
-    .map(r => ({ d: r.depth, mix: r.gas.mix, p: flushPO2(r), e: mixEND(r.gas.FHe * 100, r.depth) }));
-  if (s.mode === "CCR") s.dilSw.forEach(([o2, he, d]) => fl.push({ d, mix: mixName(o2, he), p: mixPO2(o2, d), e: mixEND(he, d) }));
+    .map(r => ({ d: r.depth, mix: r.gas.mix, p: flushPO2(r), e: mixEND(r.gas.FHe * 100, r.depth), sp: held(r) ? r.sp : null }));
+  if (s.mode === "CCR") s.dilSw.forEach(([o2, he, d]) => fl.push({ d, mix: mixName(o2, he), p: mixPO2(o2, d), e: mixEND(he, d), sp: s.sp3 }));
   const fw = worstBy(fl, f => f.p), ff = fw ? flushFlag(fw.p) : "";
-  if (ff) out.push({ t: `Diluent flush with ${fw.mix}: ppO₂ ${fw.p.toFixed(2)} bar at ${fw.d} m, over ${(ff === "crit" ? LIMITS.flushMax : LIMITS.flush).toFixed(1)}.`, red: ff === "crit" });
+  if (ff) {
+    const overSP = fw.sp != null && fw.p > fw.sp + 0.005 ? ` and above the ${fw.sp.toFixed(2)} setpoint` : "";
+    out.push({ t: `Diluent flush with ${fw.mix}: ppO₂ ${fw.p.toFixed(2)} bar at ${fw.d} m, over ${(ff === "crit" ? LIMITS.flushMax : LIMITS.flush).toFixed(1)}${overSP}.`, red: ff === "crit" });
+  }
   // END: the deepest in the plan, or a diluent flush deeper than that
   const er = worstBy(P.rows.filter(r => r.kind !== "Surface"), r => r.end), ef = worstBy(fl, f => f.e);
   const byFlush = ef && (!er || Math.round(ef.e) > Math.round(er.end)), e = byFlush ? ef.e : er ? er.end : 0;

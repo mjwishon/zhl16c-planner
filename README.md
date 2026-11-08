@@ -28,9 +28,9 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 
 ## What it shows
 
-- Gas alerts (warnings only), one line per problem at its worst point: ppO2 above 1.4 (working part) or 1.6 (deco), END deeper than 40 m, a CCR diluent flush above 1.0 bar, gas density above 5.2 g/L, a cylinder below the warning level. The box turns red when anything is red.
+- Gas alerts (warnings only), one line per problem at its worst point: ppO2 above 1.4 (working part) or 1.6 (deco), END deeper than 40 m, a CCR diluent flush above 1.0 bar, gas density above 5.2 g/L, a cylinder below the warning level. Red problems show in a red bar, yellow ones in a yellow bar.
 
-- The dive plan as a runtime table (depth, stop time, runtime, TTS (time to surface), gas, setpoint, ppO₂, diluent flush ppO₂ (CCR), END, gas density, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
+- The dive plan as a runtime table (depth, stop time, runtime, TTS (time to surface), gas, ppO₂ (CCR: the loop; hover for the setpoint), diluent flush ppO₂ (CCR), END, gas density, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
 - Gas needed per open-circuit gas: surface litres, cylinder (default twin AL80 for the OC bottom gas, AL80 for travel and deco; AL40 and others selectable), bar used and bar left from a 200 bar fill, flagged yellow below 50 bar and red below 20 bar
 - The profile with the decompression ceiling
 - A bar chart of all 16 compartments on surfacing, showing how close each is to its M-value and which one leads
