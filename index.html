@@ -429,7 +429,7 @@ select.cylsel { font-size: 13px; padding: 3px 6px; }
             <li>ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water, 10 m per bar.</li>
             <li>CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.</li>
             <li>ppO<sub>2</sub> is shown exactly. Flagged yellow above 1.4 bar in the working part of the dive, and red above 1.6 bar anywhere, except pure oxygen at the standard 6 m stop (1.61).</li>
-            <li>Flush (CCR): the ppO<sub>2</sub> of a diluent flush at that depth, diluent O<sub>2</sub> fraction × ambient pressure. Flagged yellow above 1.0 bar and red above 1.2 bar; also checked at each diluent change depth.</li>
+            <li>Flush (CCR): the ppO<sub>2</sub> of a diluent flush at that depth, diluent O<sub>2</sub> fraction × ambient pressure. Flagged yellow above 1.0 bar and red above 1.2 bar; also checked at each diluent change depth. CCR rows show the setpoint (SP); where the loop is off it (the diluent alone is richer, or it is too shallow), hover SP for the loop ppO<sub>2</sub>.</li>
             <li>Gas: RMV times ambient pressure over time, in surface litres. Bottom RMV for the descent, bottom, ascent and first stop, deco RMV after. Switch depths and gas volumes use 1 bar plus 1 bar per 10.08 m.</li>
             <li>END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Rounded to the nearest metre. Flagged yellow deeper than 40 m and red deeper than 55 m.</li>
             <li>Levels: level 1 time includes the descent; an added level's time is the time at depth, with the travel added. OC levels can each have their own gas; CCR stays at the bottom setpoint. Moving up to a shallower level adds stops wherever needed so the ceiling is never crossed. The first of those stops is where GF low applies, and the GF line from there runs on through the later stops, the level (an extended stop) and the final deco, as on a single ascent; these stops count as deco (deco RMV after the first stop, CCR deco setpoint). A later level at or below that first stop starts a new line. On the way up, open circuit switches to the best deco gas usable at each depth, as on the final ascent, but none richer in O<sub>2</sub> than the level's own gas; a shallower level breathed on a deco gas counts as deco for the ppO<sub>2</sub> limit (1.6 bar).</li>
@@ -1255,8 +1255,11 @@ function renderSummary(P) {
 function renderPlan(P) {
   const tb = $("plan"); tb.replaceChildren();
   const hr = tb.createTHead().insertRow();
+  // CCR rows show the setpoint (SP) and the diluent flush; open-circuit rows show ppO2
   const ccr = P.rows.some(r => r.ccr);
-  ["", "Depth", "Time", "Runtime", "TTS", "Gas", "ppO₂", ...(ccr ? ["Flush"] : []), "END", "Density", "GF", "Surf GF"].forEach((t, i) => {
+  const ocPO2 = r => !r.ccr && (r.kind === "Level" || r.kind === "Stop" || r.kind === "Safety");
+  const hasPO2 = !ccr || P.rows.some(ocPO2);
+  ["", "Depth", "Time", "Runtime", "TTS", "Gas", ...(ccr ? ["SP"] : []), ...(hasPO2 ? ["ppO₂"] : []), ...(ccr ? ["Flush"] : []), "END", "Density", "GF", "Surf GF"].forEach((t, i) => {
     const th = document.createElement("th"); th.textContent = t; if (i === 5) th.className = "l";
     if (t === "Flush") th.title = "ppO₂ of a diluent flush at that depth (diluent O₂ × ambient pressure)";
     hr.appendChild(th);
@@ -1282,7 +1285,7 @@ function renderPlan(P) {
     const tr = body.insertRow();
     tr.className = (r.kind === "Stop" || r.kind === "Safety") ? "stop" : (r.kind === "Asc" || r.kind === "Dec") ? "minor" : "";
     const surf = r.kind === "Surface";
-    const showPO2 = !surf && (r.ccr || r.kind === "Level" || r.kind === "Stop" || r.kind === "Safety");
+    const loop = r.ccr && !surf;
     const cells = [
       WHAT[r.kind],
       surf ? "" : r.depth + " m",
@@ -1290,20 +1293,25 @@ function renderPlan(P) {
       String(Math.floor(r.rt / 60 + 1e-9)),
       tts(r),
       r.ccr ? "Diluent " + r.gas.mix : r.gas.label,
-      showPO2 ? r.po2.toFixed(2) : "",
-      ...(ccr ? [r.ccr && !surf ? flushPO2(r).toFixed(2) : ""] : []),
+      ...(ccr ? [loop ? r.sp.toFixed(2) : ""] : []),
+      ...(hasPO2 ? [ocPO2(r) ? r.po2.toFixed(2) : ""] : []),
+      ...(ccr ? [loop ? flushPO2(r).toFixed(2) : ""] : []),
       surf ? "" : Math.round(r.end) + " m",
       surf ? "" : rowDensity(r).toFixed(1) + " g/L",
       r.kind === "Stop" && r.gf != null ? Math.round(r.gf * 100) + " %" + (r.gfHold != null ? ` \u2192 ${Math.round(r.gfHold * 100)} %` : "") : "",
       (r.kind === "Stop" || r.kind === "Level" || r.kind === "Safety" || r.kind === "Surface") ? Math.round(r.surfGf * 100) + " %" : "",
     ];
-    const po2Col = 6, endCol = po2Col + (ccr ? 2 : 1), fl = rowFlags(r, wf[ri]);
+    let k = 6;
+    const spCol = ccr ? k++ : -1, po2Col = hasPO2 ? k++ : -1, flushCol = ccr ? k++ : -1, endCol = k, fl = rowFlags(r, wf[ri]);
+    const atSP = loop && Math.abs(r.po2 - r.sp) <= 0.005;   // loop holding its setpoint
     cells.forEach((c, i) => {
       const td = tr.insertCell(); td.textContent = c;
       if (i === 5) td.className = "l";
-      if (i === po2Col && showPO2 && fl.po2) td.className = fl.po2;
-      if (i === po2Col && r.ccr && !surf) td.title = `Setpoint ${r.sp.toFixed(2)} bar`;
-      if (ccr && i === po2Col + 1 && fl.flush) td.className = fl.flush;
+      // SP: coloured when the setpoint itself is over a limit; a diluent pushing the loop higher shows in Flush
+      if (i === spCol && atSP && fl.po2) td.className = fl.po2;
+      if (i === spCol && loop && !atSP) td.title = `Loop ppO₂ ${r.po2.toFixed(2)} bar`;
+      if (i === po2Col && ocPO2(r) && fl.po2) td.className = fl.po2;
+      if (i === flushCol && fl.flush) td.className = fl.flush;
       if (i === endCol && fl.end) td.className = fl.end;
       if (i === endCol + 1 && fl.dens) td.className = fl.dens;
     });
