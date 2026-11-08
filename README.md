@@ -16,7 +16,7 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 - In CCR, optional diluent changes on the ascent (e.g. 21/35 from 36 m, 50 % from 21 m); the loop keeps the setpoint and the new diluent sets the inert gas mix
 - In CCR, optional open-circuit oxygen at the last stop, either or both: for the last minutes of the stop, and extra time after the loop clears (each 15 min by default)
 - Bottom gas (OC, and the bailout bottom gas) and diluent (CCR) as separate gases (default 12/65 for both), and setpoints (descent, bottom, deco)
-- Defaults for every mode: 80 m for 25 min, GF 30/85, deco gases 18/45, EAN50 and O2 (kept sorted by O2)
+- Defaults for every mode: 70 m for 25 min, GF 30/85, deco gases 18/45, EAN50 and O2 (kept sorted by O2)
 - Travel gas for open circuit (on by default: 18/45, switching to the bottom gas at 30 m), optionally linked to the deco gases
 - Gas lists offer GUE standard mixes, or Custom for any O2/He
 - Up to five deco or bailout gases, each with a default or custom switch depth
