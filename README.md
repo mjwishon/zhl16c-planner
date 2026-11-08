@@ -16,7 +16,7 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 - In CCR, optional diluent changes on the ascent (e.g. 21/35 from 36 m, 50 % from 21 m); the loop keeps the setpoint and the new diluent sets the inert gas mix
 - In CCR, optional open-circuit oxygen at the last stop, either or both: for the last minutes of the stop, and extra time after the loop clears (each 15 min by default)
 - Bottom gas (OC, and the bailout bottom gas) and diluent (CCR) as separate gases (default 12/65 for both), and setpoints (descent, bottom, deco)
-- Defaults for every mode: 80 m for 25 min, GF 30/70, deco gases 18/45, EAN50 and O2 (kept sorted by O2)
+- Defaults for every mode: 80 m for 25 min, GF 30/85, deco gases 18/45, EAN50 and O2 (kept sorted by O2)
 - Travel gas for open circuit (on by default: 18/45, switching to the bottom gas at 30 m), optionally linked to the deco gases
 - Gas lists offer GUE standard mixes, or Custom for any O2/He
 - Up to five deco or bailout gases, each with a default or custom switch depth
@@ -28,9 +28,9 @@ An educational Bühlmann ZH-L16C decompression planner with gradient factors for
 
 ## What it shows
 
-- Gas alerts (warnings only): ppO2 above 1.4 or END deeper than 40 m for the bottom gas or a diluent flush; above 1.6 or END 40 m for deco gases at their switch depth
+- Gas alerts (warnings only), one line per problem at its worst point: ppO2 above 1.4 (working part) or 1.6 (deco), END deeper than 40 m, a CCR diluent flush above 1.0 bar, gas density above 5.2 g/L, a cylinder below the warning level. The box turns red when anything is red.
 
-- The dive plan as a runtime table (depth, stop time, runtime, TTS (time to surface), gas, setpoint, ppO₂, END, gas density, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
+- The dive plan as a runtime table (depth, stop time, runtime, TTS (time to surface), gas, setpoint, ppO₂, diluent flush ppO₂ (CCR), END, gas density, GF at each stop, and Surf GF: the GF you would surface with if you left at that point)
 - Gas needed per open-circuit gas: surface litres, cylinder (default twin AL80 for the OC bottom gas, AL80 for travel and deco; AL40 and others selectable), bar used and bar left from a 200 bar fill, flagged yellow below 50 bar and red below 20 bar
 - The profile with the decompression ceiling
 - A bar chart of all 16 compartments on surfacing, showing how close each is to its M-value and which one leads
@@ -48,7 +48,8 @@ After the first visit it also works offline.
 
 - ZH-L16C with 16 compartments (compartment 1b), Schreiner equation while moving, exact loading at constant depth. Salt water at 10 m per bar.
 - CCR loop: diluent inert gas at ambient pressure minus water vapour minus setpoint.
-- ppO₂: flagged yellow above 1.4 bar in the working part, red above 1.6 bar anywhere (pure O₂ at 6 m, 1.61, is allowed). CCR: also red where a diluent flush would be above 1.4 bar in the working part or 1.6 bar during the deco.
+- ppO₂: flagged yellow above 1.4 bar in the working part, red above 1.6 bar anywhere (pure O₂ at 6 m, 1.61, is allowed).
+- Flush (CCR column): ppO₂ of a diluent flush at that depth, diluent O₂ fraction × ambient pressure. Flagged yellow above 1.0 bar, red above 1.2 bar.
 - END: equivalent narcotic depth with oxygen and nitrogen narcotic and helium not, against air; in CCR from the actual loop gas. Flagged yellow deeper than 40 m, red deeper than 55 m.
 - Eliminate Helium Penalty (CCR and bailout, for education only): decompression counts helium as nitrogen; END, ppO₂ and gas density use the real mix.
 - Gas density: the dry gas breathed at depth (0 °C, 1 atm densities); in CCR the loop at its ppO₂. Flagged yellow above 5.2 g/L, red above 6.2 g/L.
